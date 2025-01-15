@@ -234,12 +234,13 @@ try:
         ssh_username=st.secrets["ssh"]["username_ssh"],
         ssh_password=st.secrets["ssh"].get("private_key_passphrase", None),
         ssh_private_key=st.secrets["ssh"]["private_key_ssh"],
-        db_user=st.secrets["postgres"]["username_post"],
-        db_password=st.secrets["postgres"]["password_post"],
         db_name=st.secrets["postgres"]["database_post"],
         db_host=st.secrets["postgres"]["hostname"],
-        db_port=st.secrets["postgres"]["port"]
+        db_port=st.secrets["postgres"]["port"],
+        db_user=st.secrets["postgres"]["username_post"],
+        db_password=st.secrets["postgres"]["password_post"],
     )
+
     grace.start_tunnel()
     conn = grace.connect_to_db()
     cursor = grace.conn.cursor()
