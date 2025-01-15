@@ -145,6 +145,7 @@ def extract_leaderboard(uploaded_files):
     return all_leaderboards
 
 def post_process(all_leaderboards):
+    st.write(all_leaderboards)
     all_leaderboards_post = all_leaderboards.copy()
         # Post-processing: Drop the 'Datetime' column and handle merging
     all_leaderboards_post.drop(columns=["Datetime"], inplace=True)
@@ -155,8 +156,13 @@ def post_process(all_leaderboards):
         all_leaderboards_post['ooiwoo'] = all_leaderboards_post['ooiwoo'].combine_first(all_leaderboards_post['oiwoo'])
         all_leaderboards_post.drop(columns=['oiwoo'], inplace=True)
 
-    # Strip whitespace and convert the index to datetime using the specific format
-    all_leaderboards_post.index = pd.to_datetime(all_leaderboards_post.index.str.strip(), format='mixed')
+    # Strip whitespace and handle NaN values before converting the index to datetime
+    all_leaderboards_post.index = all_leaderboards_post.index.str.strip()
+    all_leaderboards_post.index = all_leaderboards_post.index.replace('', pd.NaT)
+    all_leaderboards_post.index = pd.to_datetime(all_leaderboards_post.index, errors='coerce', format='mixed')
+
+    # Drop rows where the index could not be converted to datetime
+    all_leaderboards_post.dropna(subset=[all_leaderboards_post.index.name], inplace=True)
 
 
     return all_leaderboards_post
