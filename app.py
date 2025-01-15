@@ -201,6 +201,15 @@ def insert_data(all_leaderboards_post):
         st.session_state["conn"].rollback()
         st.error(f"Error inserting data: {str(e)}")
 
+def pivot_leaderboard(df):
+    try:
+        # Pivot the DataFrame to restructure it
+        pivoted_df = df.pivot(index='date', columns='username', values='total_seconds')
+        return pivoted_df
+    except KeyError as e:
+        st.write(f"Error pivoting DataFrame: {e}")
+        return pd.DataFrame() 
+
 # Set page configuration
 st.set_page_config(
     page_title="NYT Mini Battle",
@@ -262,7 +271,10 @@ try:
             SELECT * FROM user_data
              """)
     
-    st.dataframe(results)
+    # Call the function to pivot the DataFrame
+    pivoted_results = pivot_leaderboard(results)
+
+    st.dataframe(pivoted_results)
 
     with st.expander("Upload Data"):
 
