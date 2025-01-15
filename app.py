@@ -111,7 +111,7 @@ def extract_leaderboard(uploaded_files):
             # Extract text lines from EasyOCR output
             text_lines = [result[1] for result in results]
 
-            print(text_lines[4:3+6*2-1])
+            st.write(text_lines)
 
             datetime_str = text_lines[3]
 
