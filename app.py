@@ -228,7 +228,6 @@ def getQuery(query, params=None):
         st.write(f"Error executing query: {e}")
         return pd.DataFrame()  # Return an empty DataFrame on error
 
-st.write(st.secrets)
 
 try:
     grace = GracefulSSHTunnel(
