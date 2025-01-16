@@ -179,9 +179,6 @@ def post_process(all_leaderboards):
         all_leaderboards_post['ooiwoo'] = all_leaderboards_post['ooiwoo'].combine_first(all_leaderboards_post['oiwoo'])
         all_leaderboards_post.drop(columns=['oiwoo'], inplace=True)
 
-    # Strip whitespace and periods, then split at commas
-    st.write(all_leaderboards_post.index)
-
     # Remove periods from the index
     all_leaderboards_post.index = all_leaderboards_post.index.str.replace('.', '')
 
@@ -195,13 +192,8 @@ def post_process(all_leaderboards):
     month = all_leaderboards_post.index.str[0]
     day_year = all_leaderboards_post.index.str[1].str.split(',')
 
-    print(month, day_year)
-
     # Combine into a datetime object
     all_leaderboards_post.index = pd.to_datetime(month + ' ' + day_year.str[0] + ', ' + day_year.str[1], format='%b %d, %Y')
-
-    st.write(all_leaderboards_post.index)
-
 
     return all_leaderboards_post
 
@@ -333,16 +325,62 @@ try:
             SELECT * FROM user_data
              """)
 
+    user_settings = getQuery("""
+            SELECT * FROM user_settings
+             """)
+
     # Call the function to pivot the DataFrame
     pivoted_results = pivot_leaderboard(results)
 
-    st.markdown("#### Day to Day")
-    st.markdown("Note: If the user does not have a result, they are assigned the slowest time")
-    st.dataframe(pivoted_results)
+    lb1, lb2 = st.columns(2)
+
+    lb1.markdown("#### Day to Day")
+    lb1.markdown("Note: If the user does not have a result, they are assigned the slowest time")
+    lb1.dataframe(pivoted_results)
 
     fill_missing = give_missing_worst_time(pivoted_results)
 
     sum_results = calculate_sum(fill_missing)
+    sum_results_today = (sum_results.iloc[-1])
+    lb2.markdown("#### Yellow Jersey Leaderboard")
+    lb2.write("Todays current standings")
+    # Merge sum_results_today with user_settings to get profile images and colors
+    leaderboard_with_settings = sum_results_today.reset_index().merge(user_settings, left_on='username', right_on='username', how='left')
+    # Rename the current column to 'total_seconds'
+    leaderboard_with_settings.rename(columns={leaderboard_with_settings.columns[1]: 'total_seconds'}, inplace=True)
+
+    # Sort by total_seconds
+    leaderboard_with_settings = leaderboard_with_settings.sort_values(by='total_seconds')
+
+    # Generate HTML for the leaderboard with rankings
+    leaderboard_html = "<div style='flex-direction: column; align-items: left;'>"
+    for rank, row in enumerate(leaderboard_with_settings.iterrows(), start=1):
+        _, row = row
+        username = row['username']
+        total_seconds = row['total_seconds']
+        url_link = row['url_link']
+        color = row['color']
+
+        if pd.isna(color):
+            # Generate a random color if no color is provided
+            color = "#{:06x}".format(np.random.randint(0, 0xFFFFFF))
+
+        if pd.isna(url_link):
+            # If no profile image, use a colored circle with the first letter of the username
+            first_letter = username[0].upper()
+            profile_html = f"<div style='width: 50px; height: 50px; border-radius: 50%; background-color: {color}; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold;'>{first_letter}</div>"
+        else:
+            # Use the profile image
+            profile_html = f"<img src='{url_link}' style='width: 50px; height: 50px; border-radius: 50%;'>" 
+
+        leaderboard_html += f"<div style='display: flex; align-items: center; padding-left: 30px; margin-bottom: 10px;'><div style='margin-right: 10px; font-size: 24px; font-weight: bold;'>{rank}</div><div style='margin-right: 10px;'>{profile_html}</div><div style='padding-left: 10px;'>{username}: {total_seconds} seconds</div></div>"
+
+        leaderboard_html += "<div style='display: flex; width: 100%; flex-direction: column; border-top: 1px solid #ccc; align-items: left; padding-top: 5px; padding-bottom: 5px;'></div>"
+    leaderboard_html += "</div>"
+
+    lb2.markdown(leaderboard_html, unsafe_allow_html=True)
+
+
 
     st.markdown("#### Accumulated results")
     fig = px.scatter(sum_results, x=sum_results.index, y=sum_results.columns, labels={'value': 'Cumulative Seconds [s]'})
@@ -371,11 +409,49 @@ try:
     
     if st.session_state["set_user"] is not None:
         st.markdown("#### Welcome: " + st.session_state["set_user"])
-        st.text_input("Copy an image Url to change you profile picture!")
+        st.markdown("Edit your profile below")
+
+        c1,c2 = st.columns(2)
+
+        new_url = c1.text_input("Copy an image Url to change your profile picture!")
+        user_color = c2.color_picker("Pick a color for your profile!")
+        submit = c1.button("Update Profile")
+        if submit:
+            if len(new_url) >= 2000:
+                st.error("Url too long, please use a shorter one" + str(len(new_url)))
+            if len(new_url) > 0 and len(new_url) < 2000:
+                try:
+                    st.session_state["cursor"].execute(""" 
+                    INSERT INTO user_settings (username, url_link)
+                    VALUES (%s, %s)
+                    ON CONFLICT (username)
+                    DO UPDATE SET url_link = EXCLUDED.url_link;
+                    """, (st.session_state["set_user"], new_url))
+                    st.session_state["conn"].commit()
+                    st.success("Profile picture updated!")
+                except Exception as e:
+                    st.session_state["conn"].rollback()
+                    st.error(f"Error updating profile picture: {str(e)}")
+                
+            if user_color:
+                try:
+                    st.session_state["cursor"].execute(""" 
+                    INSERT INTO user_settings (username, color)
+                    VALUES (%s, %s)
+                    ON CONFLICT (username)
+                    DO UPDATE SET color = EXCLUDED.color;
+                    """, (st.session_state["set_user"], str(user_color)))
+                    st.session_state["conn"].commit()
+                    st.success("Color updated!")
+                except Exception as e:
+                    st.session_state["conn"].rollback()
+                    st.error(f"Error updating color: {str(e)}")
+                
+                st.markdown(f"<div style='width: 200px; height: 50px; background-color: {user_color};'></div>", unsafe_allow_html=True)
+
 
 
 finally:
-
     # Ensure all resources are cleaned up
     grace.close_resources()
     st.session_state.grace = None
