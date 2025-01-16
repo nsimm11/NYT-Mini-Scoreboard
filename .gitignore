@@ -131,3 +131,7 @@ cython_debug/
 
 # Ignore credentials file
 credentials.py
+
+*.png
+*.jpg
+*.jpeg
