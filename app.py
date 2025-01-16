@@ -326,6 +326,10 @@ try:
     # Call the function to pivot the DataFrame
     pivoted_results = pivot_leaderboard(results)
 
+    st.markdown("#### Day to Day")
+    st.markdown("Note: If the user does not have a result, they are assigned the slowest time")
+    st.dataframe(pivoted_results)
+
     fill_missing = give_missing_worst_time(pivoted_results)
 
     sum_results = calculate_sum(fill_missing)
