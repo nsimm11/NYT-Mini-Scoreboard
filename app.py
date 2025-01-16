@@ -332,7 +332,7 @@ try:
     # Call the function to pivot the DataFrame
     pivoted_results = pivot_leaderboard(results)
 
-    lb1, lb2 = st.columns(2, gap="medium", border="1px solid #ccc")
+    lb1, lb2 = st.columns(2, gap="medium", border=True)
 
     lb1.markdown("#### Day to Day")
     lb1.markdown("Note: If the user does not have a result, they are assigned the slowest time")
