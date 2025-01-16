@@ -12,6 +12,9 @@ import os
 
 mix_ups = {"ooiwo": ["oiwoo"]}
 
+if "set_user" not in st.session_state:
+    st.session_state["set_user"] = None
+
 class GracefulSSHTunnel:
     def __init__(self, ssh_username, ssh_password, ssh_private_key, db_host, db_port, db_name, db_user, db_password):
         self.ssh_username = ssh_username
@@ -130,6 +133,8 @@ def extract_leaderboard(uploaded_files):
                 else:
                     if "(you)" in chart_data[i]:
                         chart_data[i] = chart_data[i].replace('(you)', '')
+                        st.session_state["set_user"] = chart_data[i]
+                        st.toast("Welcome: " + st.session_state["set_user"])
 
                     if "Settings" in chart_data[i]:
                         break
@@ -363,6 +368,10 @@ try:
             st.write("uploading...")
 
             insert_data(all_leaderboards_post)
+    
+    if st.session_state["set_user"] is not None:
+        st.markdown("#### Welcome: " + st.session_state["set_user"])
+        st.text_input("Copy an image Url to change you profile picture!")
 
 
 finally:
