@@ -14,6 +14,10 @@ mix_ups = {"ooiwo": ["oiwoo"]}
 
 if "set_user" not in st.session_state:
     st.session_state["set_user"] = None
+if "confirmButton" not in st.session_state:
+    st.session_state["confirmButton"] = False
+if "final_data" not in st.session_state:
+    st.session_state["final_data"] = pd.DataFrame()
 
 class GracefulSSHTunnel:
     def __init__(self, ssh_username, ssh_password, ssh_private_key, db_host, db_port, db_name, db_user, db_password):
@@ -102,6 +106,7 @@ def extract_leaderboard(uploaded_files):
 
     all_leaderboards = pd.DataFrame()  # Initialize an empty DataFrame
     for uploaded_file in uploaded_files:
+        st.write("processing image...")
         # Save the uploaded file temporarily
         with open(uploaded_file.name, "wb") as f:
             f.write(uploaded_file.getbuffer())
@@ -125,9 +130,33 @@ def extract_leaderboard(uploaded_files):
 
             for i in range(len(chart_data)):
                 if loop == 0:
-                    if "Monday" in chart_data[i] or "Tuesday" in chart_data[i] or "Wednesday" in chart_data[i] or "Thursday" in chart_data[i] or "Friday" in chart_data[i] or "Saturday" in chart_data[i] or "Sunday" in chart_data[i]:
+                    if any(day in chart_data[i] for day in ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]):
                         loop = 1
-                        datetime_str = chart_data[i]
+
+                        dy = chart_data[i]
+                        # Remove the day from the string
+                        for day in ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]:
+                            if day in dy:
+                                datetime_str_new = dy.replace(day, '').strip()
+                        
+                                # Extract and remove the month short form
+                                month_short_forms = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+                                month = next((month for month in month_short_forms if month in datetime_str_new), None)
+                                if month:
+                                    datetime_str_new = datetime_str_new.replace(month, '').strip()
+                                
+                                # Extract and remove the year
+                                year_start_idx = datetime_str_new.find("202")
+                                if year_start_idx != -1:
+                                    year = datetime_str_new[year_start_idx:year_start_idx + 4]
+                                    datetime_str_new = datetime_str_new.replace(year, '').strip()
+                        
+                                # The remaining number is the date
+                                tdate = ''.join(filter(str.isdigit, datetime_str_new))
+
+                                datetime_str = f"{month} {tdate}, {year}"
+
+                                break
                         continue
                 
                 else:
@@ -157,7 +186,6 @@ def extract_leaderboard(uploaded_files):
 
                     else:
                         print("fail", chart_data[i-1])
-                
 
             # Convert to a DataFrame and transpose it
             leaderboard_df = pd.DataFrame(leaderboard_dict, index=[datetime_str])
@@ -180,20 +208,20 @@ def post_process(all_leaderboards):
         all_leaderboards_post.drop(columns=['oiwoo'], inplace=True)
 
     # Remove periods from the index
-    all_leaderboards_post.index = all_leaderboards_post.index.str.replace('.', '')
+    #all_leaderboards_post.index = all_leaderboards_post.index.str.replace('.', '')
 
     # Split at the comma and take the second half
-    all_leaderboards_post.index = all_leaderboards_post.index.str.split(',', n=1).str[1].str.strip()
+    #all_leaderboards_post.index = all_leaderboards_post.index.str.split(',', n=1).str[1].str.strip()
 
     # Split at the space to separate month and day-year
-    all_leaderboards_post.index = all_leaderboards_post.index.str.split(' ', n=1)
+    #all_leaderboards_post.index = all_leaderboards_post.index.str.split(' ', n=1)
 
     # Extract month, day, and year
-    month = all_leaderboards_post.index.str[0]
-    day_year = all_leaderboards_post.index.str[1].str.split(',')
+    #month = all_leaderboards_post.index.str[0]
+    #day_year = all_leaderboards_post.index.str[1].str.split(',')
 
     # Combine into a datetime object
-    all_leaderboards_post.index = pd.to_datetime(month + ' ' + day_year.str[0] + ', ' + day_year.str[1], format='%b %d, %Y')
+    all_leaderboards_post.index = pd.to_datetime(all_leaderboards_post.index, errors="coerce", format='%b %d, %Y')
 
     return all_leaderboards_post
 
@@ -402,13 +430,43 @@ try:
 
         # Process the uploaded images
         if uploaded_files:
-            st.write("processing...")
-            all_leaderboards = extract_leaderboard(uploaded_files)
+            if len(st.session_state["final_data"]) == 0:
+                try:
+                    all_leaderboards = extract_leaderboard(uploaded_files)
 
-            all_leaderboards_post = post_process(all_leaderboards)
-            st.write("uploading...")
+                    all_leaderboards_post = post_process(all_leaderboards)
 
-            insert_data(all_leaderboards_post)
+                    st.session_state["final_data"] = all_leaderboards_post
+                except:
+                    st.warning("Failed to Process Image")
+
+            else:
+                all_leaderboards_post = st.session_state["final_data"] 
+
+            
+            st.write("Dataframe to be inserted. Please confirm data and people.")
+            st.dataframe(all_leaderboards_post)
+
+            users = st.multiselect("For privacy, you may deselect users", options=list(all_leaderboards_post.columns), default=list(all_leaderboards_post.columns))
+
+            st.session_state["confirmButton"] = st.button("Confirm Data")
+
+            if st.session_state["confirmButton"] and len(all_leaderboards_post) > 0:
+
+                try:
+                    all_leaderboards_post = all_leaderboards_post[users]
+                    
+                    st.write("uploading...")
+
+                    insert_data(all_leaderboards_post)
+
+                    st.session_state["final_data"] = pd.DataFrame()
+
+                except:
+                    st.warning("Failed to upload data")
+                    st.session_state["final_data"] = pd.DataFrame()
+
+
     
     if st.session_state["set_user"] is not None:
         st.markdown("#### Welcome: " + st.session_state["set_user"])
