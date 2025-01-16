@@ -338,10 +338,6 @@ try:
 
     sum_results = calculate_sum(fill_missing)
 
-    st.markdown("#### Results per day")
-    st.dataframe(fill_missing)
-
-
     st.markdown("#### Accumulated results")
     fig = px.scatter(sum_results, x=sum_results.index, y=sum_results.columns, labels={'value': 'Cumulative Seconds [s]'})
     fig.update_traces(mode='lines+markers')
