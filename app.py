@@ -279,9 +279,9 @@ st.session_state.last_active = time.time()
 
 # Add centered markdown with bold title
 st.markdown("<h1 style='text-align: center; font-weight: bold;'>Palmerston & Friends - NYT Mini Leaderboard</h1>", unsafe_allow_html=True)
-st.markdown("<h4 style='text-align:center;'>Tour de France Style - Best accumulated time at the end of the month wins!</h4>", unsafe_allow_html=True)
-st.markdown("<h4 style='text-align:center;'>If you miss a day, you get the worst time!</h4>", unsafe_allow_html=True)
-st.markdown("<h4 style='text-align:center;'>Upload your Leaderboard Screenshots below to add times to the leaderboard</h4>", unsafe_allow_html=True)
+st.markdown("<div style='text-align:center;'>Tour de France Style - Best accumulated time at the end of the month wins!</div>", unsafe_allow_html=True)
+st.markdown("<div style='text-align:center;'>If you miss a day, you get the worst time!</div>", unsafe_allow_html=True)
+st.markdown("<div style='text-align:center;'>Upload your Leaderboard Screenshots below to add times to the leaderboard</div>", unsafe_allow_html=True)
 
 
 
