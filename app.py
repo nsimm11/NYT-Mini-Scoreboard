@@ -281,8 +281,8 @@ st.session_state.last_active = time.time()
 st.markdown("<h1 style='text-align: center; font-weight: bold;'>Palmerston & Friends - NYT Mini Leaderboard</h1>", unsafe_allow_html=True)
 st.markdown("#### Rules")
 st.markdown("- Tour de France Style - Best accumulated time at the end of the month wins!")
-st.markdown("If you miss a day, you get the worst time!")
-st.markdown("Upload your Leaderboard Screenshots below to add times to the leaderboard")
+st.markdown("- If you miss a day, you get the worst time!")
+st.markdown("- Upload your Leaderboard Screenshots below to add times to the leaderboard")
 
 
 
