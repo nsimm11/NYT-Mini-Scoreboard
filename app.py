@@ -279,6 +279,10 @@ st.session_state.last_active = time.time()
 
 # Add centered markdown with bold title
 st.markdown("<h1 style='text-align: center; font-weight: bold;'>New York Times Mini - Battle</h1>", unsafe_allow_html=True)
+st.markdown("NYT Mini Leaderboard - Tour de France Style")
+st.markdown("Best accumulated time over the month wins!")
+st.markdown("Upload your screenshots to update the leaderboard")
+
 
 
 #General Query funciton, returns a dataframe. Use this instead of pd.read_sql
