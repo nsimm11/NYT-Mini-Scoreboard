@@ -10,7 +10,7 @@ import psycopg2
 import plotly.express as px
 import os
 
-mix_ups = {"ooiwo": ["oiwoo", "ooiwo"], "nsimm22":["nsimm22 "], "rachelrotstein": ["rachrot "]}
+mix_ups = {"ooiwo": ["oiwoo", "ooiwo"], "nsimm22":["nsimm22 "], "rachelrotstein": ["rachrot ", "rachrot"]}
 
 if "set_user" not in st.session_state:
     st.session_state["set_user"] = None
