@@ -204,6 +204,7 @@ def fix_mix_ups(all_leaderboards_post):
                     raise ValueError("Conflict detected: Both 'oiwoo' and 'ooiwoo' have non-NaN values in the same row.")
                 all_leaderboards_post[key] = all_leaderboards_post[key].combine_first(all_leaderboards_post[name])
                 all_leaderboards_post.drop(columns=[name], inplace=True)
+    return all_leaderboards_post
 
 def post_process(all_leaderboards):
     all_leaderboards = all_leaderboards.dropna(axis=1, how='all')
@@ -226,6 +227,7 @@ def post_process(all_leaderboards):
     #day_year = all_leaderboards_post.index.str[1].str.split(',')
 
     # Combine into a datetime object
+    st.write(all_leaderboards_post)
     all_leaderboards_post.index = pd.to_datetime(all_leaderboards_post.index, errors="coerce", format='%b %d, %Y')
 
     return all_leaderboards_post
@@ -275,6 +277,7 @@ def fix_mix_ups_results(mix_ups, all_leaderboards_post):
                 all_leaderboards_post.drop(columns=[name], inplace=True)
             elif name in all_leaderboards_post.columns:
                 all_leaderboards_post.rename(columns={name: key}, inplace=True)
+
     return all_leaderboards_post
 
 def pivot_leaderboard(df):
@@ -440,10 +443,8 @@ try:
         for uploaded_file in uploaded_files:
             file_size = uploaded_file.size / (1024 * 1024)
             if file_size > 0.2:
-                st.write("File Size is suspisionly large, please check the file")
+                st.write(f"File size of {uploaded_file.name} is {file_size:.2f} MB, too large...")
                 st.stop()
-            st.write(f"File size of {uploaded_file.name}: {file_size:.2f} MB")
-
         # Process the uploaded images
         if uploaded_files:
             if len(st.session_state["final_data"]) == 0:
