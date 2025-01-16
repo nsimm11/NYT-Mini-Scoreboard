@@ -439,6 +439,9 @@ try:
 
         for uploaded_file in uploaded_files:
             file_size = uploaded_file.size / (1024 * 1024)
+            if file_size > 0.2:
+                st.write("File Size is suspisionly large, please check the file")
+                st.stop()
             st.write(f"File size of {uploaded_file.name}: {file_size:.2f} MB")
 
         # Process the uploaded images
@@ -477,7 +480,7 @@ try:
                         st.session_state["final_data"] = pd.DataFrame()
 
                     except Exception as e:
-                        st.warning(f"Failed to Process Image: {str(e)}")
+                        st.warning(f"Failed to Push to DB: {str(e)}")
                         st.session_state["final_data"] = pd.DataFrame()
 
 
