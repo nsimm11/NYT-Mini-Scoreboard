@@ -231,13 +231,14 @@ def insert_data(all_leaderboards_post):
         st.session_state["conn"].rollback()
         st.error(f"Error inserting data: {str(e)}")
 
-def fix_mix_ups(mix_ups):
+def fix_mix_ups(mix_ups, all_leaderboards_post):
 
-    for key in mix_ups.key():
+    for key in mix_ups.keys():
         for name in mix_ups[key]:
-            all_leaderboards_post.drop(columns=[name], inplace=True)
+            if name in all_leaderboards_post.columns:
+                all_leaderboards_post.drop(columns=[name], inplace=True)
 
-    return True
+    return all_leaderboards_post
 
 def pivot_leaderboard(df):
     try:
@@ -328,9 +329,11 @@ try:
     user_settings = getQuery("""
             SELECT * FROM user_settings
              """)
-
+    
     # Call the function to pivot the DataFrame
     pivoted_results = pivot_leaderboard(results)
+
+    updated_results = fix_mix_ups(mix_ups, pivoted_results)
 
     lb1, lb2 = st.columns(2, gap="medium", border=True)
 
