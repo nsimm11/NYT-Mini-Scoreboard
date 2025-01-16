@@ -10,7 +10,7 @@ import psycopg2
 import plotly.express as px
 import os
 
-mix_ups = {"ooiwo": ["oiwoo"]}
+mix_ups = {"ooiwo": ["oiwoo", "ooiwo"], "nsimm22":["nsimm22 "], "rachelrotstein": ["rachrot "]}
 
 if "set_user" not in st.session_state:
     st.session_state["set_user"] = None
@@ -195,18 +195,23 @@ def extract_leaderboard(uploaded_files):
 
     return all_leaderboards
 
+def fix_mix_ups(all_leaderboards_post):
+    for key in mix_ups.keys():
+        for name in mix_ups[key]:
+            if name in all_leaderboards_post.columns and key in all_leaderboards_post.columns:
+                conflict_mask = ~all_leaderboards_post[name].isna() & ~all_leaderboards_post[key].isna()
+                if conflict_mask.any():
+                    raise ValueError("Conflict detected: Both 'oiwoo' and 'ooiwoo' have non-NaN values in the same row.")
+                all_leaderboards_post[key] = all_leaderboards_post[key].combine_first(all_leaderboards_post[name])
+                all_leaderboards_post.drop(columns=[name], inplace=True)
+
 def post_process(all_leaderboards):
     all_leaderboards = all_leaderboards.dropna(axis=1, how='all')
 
     all_leaderboards_post = all_leaderboards.copy()
         # Post-processing: Drop the 'Datetime' column and handle merging
-    if 'oiwoo' in all_leaderboards_post.columns and 'ooiwoo' in all_leaderboards_post.columns:
-        conflict_mask = ~all_leaderboards_post['oiwoo'].isna() & ~all_leaderboards_post['ooiwoo'].isna()
-        if conflict_mask.any():
-            raise ValueError("Conflict detected: Both 'oiwoo' and 'ooiwoo' have non-NaN values in the same row.")
-        all_leaderboards_post['ooiwoo'] = all_leaderboards_post['ooiwoo'].combine_first(all_leaderboards_post['oiwoo'])
-        all_leaderboards_post.drop(columns=['oiwoo'], inplace=True)
 
+    all_leaderboards_post = fix_mix_ups(all_leaderboards_post)
     # Remove periods from the index
     #all_leaderboards_post.index = all_leaderboards_post.index.str.replace('.', '')
 
@@ -259,13 +264,17 @@ def insert_data(all_leaderboards_post):
         st.session_state["conn"].rollback()
         st.error(f"Error inserting data: {str(e)}")
 
-def fix_mix_ups(mix_ups, all_leaderboards_post):
-
+def fix_mix_ups_results(mix_ups, all_leaderboards_post):
     for key in mix_ups.keys():
         for name in mix_ups[key]:
-            if name in all_leaderboards_post.columns:
+            if name in all_leaderboards_post.columns and key in all_leaderboards_post.columns:
+                conflict_mask = ~all_leaderboards_post[name].isna() & ~all_leaderboards_post[key].isna() & (all_leaderboards_post[name] != all_leaderboards_post[key])
+                if conflict_mask.any():
+                    raise ValueError(f"Conflict detected: Both '{key}' and '{name}' have different non-NaN values in the same row.")
+                all_leaderboards_post[key] = all_leaderboards_post[key].combine_first(all_leaderboards_post[name])
                 all_leaderboards_post.drop(columns=[name], inplace=True)
-
+            elif name in all_leaderboards_post.columns:
+                all_leaderboards_post.rename(columns={name: key}, inplace=True)
     return all_leaderboards_post
 
 def pivot_leaderboard(df):
@@ -361,7 +370,7 @@ try:
     # Call the function to pivot the DataFrame
     pivoted_results = pivot_leaderboard(results)
 
-    updated_results = fix_mix_ups(mix_ups, pivoted_results)
+    updated_results = fix_mix_ups_results(mix_ups, pivoted_results)
 
     lb1, lb2 = st.columns(2, gap="medium", border=True)
 
@@ -369,7 +378,7 @@ try:
     lb1.markdown("Note: If the user does not have a result, they are assigned the slowest time")
     lb1.dataframe(pivoted_results)
 
-    fill_missing = give_missing_worst_time(pivoted_results)
+    fill_missing = give_missing_worst_time(updated_results)
 
     sum_results = calculate_sum(fill_missing)
     sum_results_today = (sum_results.iloc[-1])
@@ -427,6 +436,10 @@ try:
 
         # Add an image input selector for multiple images
         uploaded_files = st.file_uploader("Choose images", accept_multiple_files=True, type=["png", "jpg", "jpeg"])
+
+        for uploaded_file in uploaded_files:
+            file_size = os.path.getsize(uploaded_file.name) / (1024 * 1024)
+            st.write(f"File size of {uploaded_file.name}: {file_size:.2f} MB")
 
         # Process the uploaded images
         if uploaded_files:
