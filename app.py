@@ -7,7 +7,10 @@ import tempfile
 from sshtunnel import SSHTunnelForwarder
 import time
 import psycopg2
+import plotly.express as px
 import os
+
+mix_ups = {"ooiwo": ["oiwoo"]}
 
 class GracefulSSHTunnel:
     def __init__(self, ssh_username, ssh_password, ssh_private_key, db_host, db_port, db_name, db_user, db_password):
@@ -92,7 +95,6 @@ class GracefulSSHTunnel:
             print("Temporary private key file removed.")
 
 
-@st.cache_data
 def extract_leaderboard(uploaded_files):
 
     all_leaderboards = pd.DataFrame()  # Initialize an empty DataFrame
@@ -111,30 +113,46 @@ def extract_leaderboard(uploaded_files):
             # Extract text lines from EasyOCR output
             text_lines = [result[1] for result in results]
 
-            st.write(text_lines)
-
-            datetime_str = text_lines[3]
-
             # Create a dictionary to hold the leaderboard data
-            leaderboard_dict = {"Datetime": datetime_str}
+            chart_data = text_lines
 
-            # Populate the dictionary with usernames as keys and their values
-            for i in range(4, 2+6*2+1, 2):
-                if "(you)" in text_lines[i]:
-                    text_lines[i] = text_lines[i].replace(" (you)", "")
-                time_str = text_lines[i+1]
-                # Calculate total seconds from time_str
-                if "." in time_str:
-                    minutes, seconds = map(int, time_str.split('.'))
-                    total_seconds = minutes * 60 + seconds
-                elif ":" in time_str:
-                    minutes, seconds = map(int, time_str.split(':'))
-                    total_seconds = minutes * 60 + seconds
-                else:
-                    print("Error: Time format not recognized", time_str)
-                    total_seconds = np.nan
+            leaderboard_dict = {}
+
+            loop = 0
+
+            for i in range(len(chart_data)):
+                if loop == 0:
+                    if "Monday" in chart_data[i] or "Tuesday" in chart_data[i] or "Wednesday" in chart_data[i] or "Thursday" in chart_data[i] or "Friday" in chart_data[i] or "Saturday" in chart_data[i] or "Sunday" in chart_data[i]:
+                        loop = 1
+                        datetime_str = chart_data[i]
+                        continue
                 
-                leaderboard_dict[text_lines[i]] = total_seconds
+                else:
+                    if "(you)" in chart_data[i]:
+                        chart_data[i] = chart_data[i].replace('(you)', '')
+
+                    if "Settings" in chart_data[i]:
+                        break
+
+                    elif len(chart_data[i]) == 6 and ":" in chart_data[i] and "." in chart_data[i]:
+                        chart_data[i] = chart_data[i].replace('.', '')
+                        minutes, seconds = chart_data[i].split(':')
+                        total_seconds = int(minutes) * 60 + int(seconds)
+                        leaderboard_dict[text_lines[i-1]] = total_seconds
+
+                    elif len(chart_data[i]) == 5 and ":" in chart_data[i]:
+                        minutes, seconds = chart_data[i].split(':')
+                        total_seconds = int(minutes) * 60 + int(seconds)
+                        leaderboard_dict[text_lines[i-1]] = total_seconds
+
+                    elif len(chart_data[i]) == 5 and "." in chart_data[i]:
+                        minutes, seconds = chart_data[i].split('.')
+                        total_seconds = int(minutes) * 60 + int(seconds)
+                        leaderboard_dict[text_lines[i-1]] = total_seconds
+
+                    else:
+                        print("fail", chart_data[i-1])
+                
 
             # Convert to a DataFrame and transpose it
             leaderboard_df = pd.DataFrame(leaderboard_dict, index=[datetime_str])
@@ -145,10 +163,10 @@ def extract_leaderboard(uploaded_files):
     return all_leaderboards
 
 def post_process(all_leaderboards):
-    st.write(all_leaderboards)
+    all_leaderboards = all_leaderboards.dropna(axis=1, how='all')
+
     all_leaderboards_post = all_leaderboards.copy()
         # Post-processing: Drop the 'Datetime' column and handle merging
-    all_leaderboards_post.drop(columns=["Datetime"], inplace=True)
     if 'oiwoo' in all_leaderboards_post.columns and 'ooiwoo' in all_leaderboards_post.columns:
         conflict_mask = ~all_leaderboards_post['oiwoo'].isna() & ~all_leaderboards_post['ooiwoo'].isna()
         if conflict_mask.any():
@@ -156,13 +174,28 @@ def post_process(all_leaderboards):
         all_leaderboards_post['ooiwoo'] = all_leaderboards_post['ooiwoo'].combine_first(all_leaderboards_post['oiwoo'])
         all_leaderboards_post.drop(columns=['oiwoo'], inplace=True)
 
-    # Strip whitespace and handle NaN values before converting the index to datetime
-    all_leaderboards_post.index = all_leaderboards_post.index.str.strip()
-    all_leaderboards_post.index = all_leaderboards_post.index.replace('', pd.NaT)
-    all_leaderboards_post.index = pd.to_datetime(all_leaderboards_post.index, errors='coerce', format='mixed')
+    # Strip whitespace and periods, then split at commas
+    st.write(all_leaderboards_post.index)
 
-    # Drop rows where the index could not be converted to datetime
-    all_leaderboards_post.dropna(subset=[all_leaderboards_post.index.name], inplace=True)
+    # Remove periods from the index
+    all_leaderboards_post.index = all_leaderboards_post.index.str.replace('.', '')
+
+    # Split at the comma and take the second half
+    all_leaderboards_post.index = all_leaderboards_post.index.str.split(',', n=1).str[1].str.strip()
+
+    # Split at the space to separate month and day-year
+    all_leaderboards_post.index = all_leaderboards_post.index.str.split(' ', n=1)
+
+    # Extract month, day, and year
+    month = all_leaderboards_post.index.str[0]
+    day_year = all_leaderboards_post.index.str[1].str.split(',')
+
+    print(month, day_year)
+
+    # Combine into a datetime object
+    all_leaderboards_post.index = pd.to_datetime(month + ' ' + day_year.str[0] + ', ' + day_year.str[1], format='%b %d, %Y')
+
+    st.write(all_leaderboards_post.index)
 
 
     return all_leaderboards_post
@@ -201,6 +234,14 @@ def insert_data(all_leaderboards_post):
         st.session_state["conn"].rollback()
         st.error(f"Error inserting data: {str(e)}")
 
+def fix_mix_ups(mix_ups):
+
+    for key in mix_ups.key():
+        for name in mix_ups[key]:
+            all_leaderboards_post.drop(columns=[name], inplace=True)
+
+    return True
+
 def pivot_leaderboard(df):
     try:
         # Pivot the DataFrame to restructure it
@@ -209,6 +250,18 @@ def pivot_leaderboard(df):
     except KeyError as e:
         st.write(f"Error pivoting DataFrame: {e}")
         return pd.DataFrame() 
+
+def give_missing_worst_time(df):
+    # Fill missing values with the worst time in the row
+    df = df.apply(lambda row: row.fillna(row.max()), axis=1)
+    return df
+
+def calculate_sum(df):
+    # for each player, update the dataframe so it has the username plus their total time at every day, where the time is the sum of all previous days
+    for column in df.columns:
+        df[column] = df[column].cumsum()
+    return df
+
 
 # Set page configuration
 st.set_page_config(
@@ -243,7 +296,6 @@ def getQuery(query, params=None):
         st.write(f"Error executing query: {e}")
         return pd.DataFrame()  # Return an empty DataFrame on error
 
-
 try:
     grace = GracefulSSHTunnel(
         ssh_username=st.secrets["ssh"]["username_ssh"],
@@ -270,11 +322,24 @@ try:
     results = getQuery("""
             SELECT * FROM user_data
              """)
-    
+
     # Call the function to pivot the DataFrame
     pivoted_results = pivot_leaderboard(results)
 
-    st.dataframe(pivoted_results)
+    fill_missing = give_missing_worst_time(pivoted_results)
+
+    sum_results = calculate_sum(fill_missing)
+
+    st.markdown("#### Results per day")
+    st.dataframe(fill_missing)
+
+
+    st.markdown("#### Accumulated results")
+    fig = px.scatter(sum_results, x=sum_results.index, y=sum_results.columns, labels={'value': 'Cumulative Seconds [s]'})
+    fig.update_traces(mode='lines+markers')
+    fig.update_layout(xaxis_title='Date', yaxis_title='Cumulative Seconds [s]')
+    fig.update_xaxes(tickformat='%Y-%m-%d')  # Show only the date part on the x-axis
+    st.plotly_chart(fig)
 
     with st.expander("Upload Data"):
 
