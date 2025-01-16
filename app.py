@@ -438,7 +438,7 @@ try:
         uploaded_files = st.file_uploader("Choose images", accept_multiple_files=True, type=["png", "jpg", "jpeg"])
 
         for uploaded_file in uploaded_files:
-            file_size = os.path.getsize(uploaded_file.name) / (1024 * 1024)
+            file_size = uploaded_file.size / (1024 * 1024)
             st.write(f"File size of {uploaded_file.name}: {file_size:.2f} MB")
 
         # Process the uploaded images
