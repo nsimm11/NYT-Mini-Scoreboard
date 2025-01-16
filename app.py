@@ -450,34 +450,35 @@ try:
                     all_leaderboards_post = post_process(all_leaderboards)
 
                     st.session_state["final_data"] = all_leaderboards_post
-                except:
-                    st.warning("Failed to Process Image")
+                except Exception as e:
+                    all_leaderboards_post = pd.DataFrame()
+                    st.warning(f"Failed to Process Image: {str(e)}")
 
             else:
                 all_leaderboards_post = st.session_state["final_data"] 
 
-            
-            st.write("Dataframe to be inserted. Please confirm data and people.")
-            st.dataframe(all_leaderboards_post)
+            if len(all_leaderboards_post) > 0:
+                st.write("Dataframe to be inserted. Please confirm data and people.")
+                st.dataframe(all_leaderboards_post)
 
-            users = st.multiselect("For privacy, you may deselect users", options=list(all_leaderboards_post.columns), default=list(all_leaderboards_post.columns))
+                users = st.multiselect("For privacy, you may deselect users", options=list(all_leaderboards_post.columns), default=list(all_leaderboards_post.columns))
 
-            st.session_state["confirmButton"] = st.button("Confirm Data")
+                st.session_state["confirmButton"] = st.button("Confirm Data")
 
-            if st.session_state["confirmButton"] and len(all_leaderboards_post) > 0:
+                if st.session_state["confirmButton"] and len(all_leaderboards_post) > 0:
 
-                try:
-                    all_leaderboards_post = all_leaderboards_post[users]
-                    
-                    st.write("uploading...")
+                    try:
+                        all_leaderboards_post = all_leaderboards_post[users]
+                        
+                        st.write("uploading...")
 
-                    insert_data(all_leaderboards_post)
+                        insert_data(all_leaderboards_post)
 
-                    st.session_state["final_data"] = pd.DataFrame()
+                        st.session_state["final_data"] = pd.DataFrame()
 
-                except:
-                    st.warning("Failed to upload data")
-                    st.session_state["final_data"] = pd.DataFrame()
+                    except Exception as e:
+                        st.warning(f"Failed to Process Image: {str(e)}")
+                        st.session_state["final_data"] = pd.DataFrame()
 
 
     
