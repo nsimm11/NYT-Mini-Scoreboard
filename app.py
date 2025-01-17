@@ -9,6 +9,8 @@ import time
 import psycopg2
 import plotly.express as px
 import os
+from PIL import Image
+import io
 
 mix_ups = {"ooiwo": ["oiwoo", "ooiwo"], "nsimm22":["nsimm22 "], "rachelrotstein": ["rachrot ", "rachrot"]}
 
@@ -107,12 +109,22 @@ def extract_leaderboard(uploaded_files):
     all_leaderboards = pd.DataFrame()  # Initialize an empty DataFrame
     for uploaded_file in uploaded_files:
         st.write("processing image...")
-        # Save the uploaded file temporarily
-        with open(uploaded_file.name, "wb") as f:
-            f.write(uploaded_file.getbuffer())
         
-            # Load the image using OpenCV
-            image = cv2.imread(uploaded_file.name)
+        # Use a temporary file to save the uploaded image
+        with tempfile.NamedTemporaryFile(delete=True) as temp_file:
+            temp_file.write(uploaded_file.getbuffer())
+            temp_file.flush()  # Ensure the file is written
+            
+            # Reset the file pointer to the beginning of the file
+            temp_file.seek(0)
+
+            # Read the image data from the temporary file
+            image_data = np.frombuffer(temp_file.read(), np.uint8)
+            image = cv2.imdecode(image_data, cv2.IMREAD_COLOR)  # Decode the image
+
+            if image is None:
+                st.warning("Failed to decode image. Please check the uploaded file format.")
+                continue  # Skip to the next file if decoding fails
 
             # Perform OCR using EasyOCR
             reader = easyocr.Reader(['en'], gpu=False)
@@ -210,24 +222,11 @@ def post_process(all_leaderboards):
     all_leaderboards = all_leaderboards.dropna(axis=1, how='all')
 
     all_leaderboards_post = all_leaderboards.copy()
-        # Post-processing: Drop the 'Datetime' column and handle merging
+    # Post-processing: Drop the 'Datetime' column and handle merging
 
     all_leaderboards_post = fix_mix_ups(all_leaderboards_post)
-    # Remove periods from the index
-    #all_leaderboards_post.index = all_leaderboards_post.index.str.replace('.', '')
-
-    # Split at the comma and take the second half
-    #all_leaderboards_post.index = all_leaderboards_post.index.str.split(',', n=1).str[1].str.strip()
-
-    # Split at the space to separate month and day-year
-    #all_leaderboards_post.index = all_leaderboards_post.index.str.split(' ', n=1)
-
-    # Extract month, day, and year
-    #month = all_leaderboards_post.index.str[0]
-    #day_year = all_leaderboards_post.index.str[1].str.split(',')
 
     # Combine into a datetime object
-    st.write(all_leaderboards_post)
     all_leaderboards_post.index = pd.to_datetime(all_leaderboards_post.index, errors="coerce", format='%b %d, %Y')
 
     return all_leaderboards_post
@@ -401,20 +400,20 @@ try:
         _, row = row
         username = row['username']
         total_seconds = row['total_seconds']
-        url_link = row['url_link']
-        color = row['color']
 
-        if pd.isna(color):
-            # Generate a random color if no color is provided
+        # Construct the path to the user's profile picture
+        user_photo_path = f"user_photos/{username.strip()}/profile_picture.jpg"  # Adjust the extension as needed
+
+        # Check if the profile image exists
+        if os.path.exists(user_photo_path):
+            # Use the profile image
+            profile_html = f"<img src='{user_photo_path}' style='width: 50px; height: 50px; border-radius: 50%;'>"
+        else:
+            # Generate a random color for each user
             color = "#{:06x}".format(np.random.randint(0, 0xFFFFFF))
-
-        if pd.isna(url_link):
-            # If no profile image, use a colored circle with the first letter of the username
+            # Use a colored circle with the first letter of the username
             first_letter = username[0].upper()
             profile_html = f"<div style='width: 50px; height: 50px; border-radius: 50%; background-color: {color}; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold;'>{first_letter}</div>"
-        else:
-            # Use the profile image
-            profile_html = f"<img src='{url_link}' style='width: 50px; height: 50px; border-radius: 50%;'>" 
 
         leaderboard_html += f"<div style='display: flex; align-items: center; padding-left: 30px; margin-bottom: 10px;'><div style='margin-right: 10px; font-size: 24px; font-weight: bold;'>{rank}</div><div style='margin-right: 10px;'>{profile_html}</div><div style='padding-left: 10px;'>{username}: {total_seconds} seconds</div></div>"
 
@@ -444,7 +443,27 @@ try:
             file_size = uploaded_file.size / (1024 * 1024)
             if file_size > 0.2:
                 st.write(f"File size of {uploaded_file.name} is {file_size:.2f} MB, too large...")
-                st.stop()
+                # If the file size is above 0.2 MB, resize the image
+                image = Image.open(uploaded_file)
+                # Define the new size (you can adjust this as needed)
+                new_size = (800, 800)  # Resize to 800x800 pixels
+                image = image.resize(new_size, Image.LANCZOS)  # Use LANCZOS for high-quality downsampling
+
+                # Save the resized image to a bytes buffer
+                img_byte_arr = io.BytesIO()
+                image.save(img_byte_arr, format='PNG')  # Save as PNG or any other format
+                img_byte_arr.seek(0)  # Move to the beginning of the BytesIO buffer
+
+                # Calculate the size of the resized image
+                reduced_size = img_byte_arr.tell() / (1024 * 1024)  # Size in MB
+                st.write(f"Reduced size of {uploaded_file.name} is {reduced_size:.2f} MB.")
+
+                # Use the resized image for further processing
+                uploaded_file = img_byte_arr  # Update the uploaded_file to the resized image
+
+            # Process the image (either original or resized)
+            # Example: all_leaderboards = extract_leaderboard([uploaded_file])
+
         # Process the uploaded images
         if uploaded_files:
             if len(st.session_state["final_data"]) == 0:
@@ -492,41 +511,23 @@ try:
 
         c1,c2 = st.columns(2)
 
-        new_url = c1.text_input("Copy an image Url to change your profile picture!")
-        user_color = c2.color_picker("Pick a color for your profile!")
+        uploaded_file = c1.file_uploader("Upload an image to change your profile picture!", type=["png", "jpg", "jpeg"])
         submit = c1.button("Update Profile")
         if submit:
-            if len(new_url) >= 2000:
-                st.error("Url too long, please use a shorter one" + str(len(new_url)))
-            if len(new_url) > 0 and len(new_url) < 2000:
+            if uploaded_file is not None:
                 try:
-                    st.session_state["cursor"].execute(""" 
-                    INSERT INTO user_settings (username, url_link)
-                    VALUES (%s, %s)
-                    ON CONFLICT (username)
-                    DO UPDATE SET url_link = EXCLUDED.url_link;
-                    """, (st.session_state["set_user"], new_url))
-                    st.session_state["conn"].commit()
-                    st.success("Profile picture updated!")
+                    # Create directory if it doesn't exist
+                    user_dir = f"user_photos/{st.session_state['set_user'].strip()}"  # Strip whitespace
+                    os.makedirs(user_dir, exist_ok=True)
+
+                    # Save the uploaded image to the specified directory
+                    with open(f"{user_dir}/profile_picture{os.path.splitext(uploaded_file.name)[1]}", "wb") as f:
+                        f.write(uploaded_file.getbuffer())
+                    st.success("Profile picture saved!")
                 except Exception as e:
-                    st.session_state["conn"].rollback()
-                    st.error(f"Error updating profile picture: {str(e)}")
-                
-            if user_color:
-                try:
-                    st.session_state["cursor"].execute(""" 
-                    INSERT INTO user_settings (username, color)
-                    VALUES (%s, %s)
-                    ON CONFLICT (username)
-                    DO UPDATE SET color = EXCLUDED.color;
-                    """, (st.session_state["set_user"], str(user_color)))
-                    st.session_state["conn"].commit()
-                    st.success("Color updated!")
-                except Exception as e:
-                    st.session_state["conn"].rollback()
-                    st.error(f"Error updating color: {str(e)}")
-                
-                st.markdown(f"<div style='width: 200px; height: 50px; background-color: {user_color};'></div>", unsafe_allow_html=True)
+                    st.error(f"Error saving profile picture: {str(e)}")
+            else:
+                st.error("Please upload an image file.")
 
 
 
