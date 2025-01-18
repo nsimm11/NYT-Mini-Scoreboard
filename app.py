@@ -486,7 +486,11 @@ try:
 
             # Now use the resized_images list for further processing
             # Pass resized_images to the extract_leaderboard function
-            del st.session_state["uploaded_files"]
+                    # Clear the session state for the file uploader if needed
+            if "uploaded_files" in st.session_state:
+                del st.session_state["uploaded_files"]
+
+            st.write(st.session_state.keys())
 
             all_leaderboards = extract_leaderboard(resized_images)
 
