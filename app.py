@@ -422,8 +422,6 @@ try:
 
     lb2.markdown(leaderboard_html, unsafe_allow_html=True)
 
-
-
     st.markdown("#### Accumulated results")
     fig = px.scatter(sum_results, x=sum_results.index, y=sum_results.columns, labels={'value': 'Cumulative Seconds [s]'})
     fig.update_traces(mode='lines+markers')
@@ -436,49 +434,58 @@ try:
         st.markdown("Upload screenshots of your mini-crossword leaderboard")
         st.markdown("The results table will be extracted from the image and pushed to the database")
 
-        # Add an image input selector for multiple images
-        uploaded_files = st.file_uploader("Choose images", accept_multiple_files=True, type=["png", "jpg", "jpeg"])
+        # Clear the session state for the file uploader if needed
+        if "uploaded_files" in st.session_state:
+            del st.session_state["uploaded_files"]
 
-        for uploaded_file in uploaded_files:
-            file_size = uploaded_file.size / (1024 * 1024)
-            if file_size > 0.2:
-                st.write(f"File size of {uploaded_file.name} is {file_size:.2f} MB, too large...")
-                # If the file size is above 0.2 MB, resize the image
-                image = Image.open(uploaded_file)
-                # Define the new size (you can adjust this as needed)
-                new_size = (800, 800)  # Resize to 800x800 pixels
-                image = image.resize(new_size, Image.LANCZOS)  # Use LANCZOS for high-quality downsampling
+        # File uploader
+        uploaded_files = st.file_uploader("Upload Images", type=["jpg", "jpeg", "png"], accept_multiple_files=True)
 
-                # Save the resized image to a bytes buffer
-                img_byte_arr = io.BytesIO()
-                image.save(img_byte_arr, format='PNG')  # Save as PNG or any other format
-                img_byte_arr.seek(0)  # Move to the beginning of the BytesIO buffer
+        # Initialize a list to hold resized images
+        resized_images = []
 
-                # Calculate the size of the resized image
-                reduced_size = img_byte_arr.tell() / (1024 * 1024)  # Size in MB
-                st.write(f"Reduced size of {uploaded_file.name} is {reduced_size:.2f} MB.")
-
-                # Use the resized image for further processing
-                uploaded_file = img_byte_arr  # Update the uploaded_file to the resized image
-
-            # Process the image (either original or resized)
-            # Example: all_leaderboards = extract_leaderboard([uploaded_file])
-
-        # Process the uploaded images
         if uploaded_files:
-            if len(st.session_state["final_data"]) == 0:
+            for uploaded_file in uploaded_files:
                 try:
-                    all_leaderboards = extract_leaderboard(uploaded_files)
+                    # Check file size
+                    file_size = uploaded_file.size / (1024 * 1024)
+                    if file_size > 0.2:
+                        st.write(f"File size of {uploaded_file.name} is {file_size:.2f} MB, too large...")
+                        
+                        # Resize the image
+                        image = Image.open(uploaded_file)
 
-                    all_leaderboards_post = post_process(all_leaderboards)
+                        # Define the new size (you can adjust this as needed)
+                        new_size = (int(image.width * 0.5), int(image.height * 0.5))  # Resize to 50% of original
+                        image = image.resize(new_size, Image.LANCZOS)  # Use LANCZOS for high-quality downsampling
 
-                    st.session_state["final_data"] = all_leaderboards_post
+                        # Save the resized image to a bytes buffer
+                        img_byte_arr = io.BytesIO()
+                        image.save(img_byte_arr, format='PNG')  # Save as PNG or any other format
+                        img_byte_arr.seek(0)  # Move to the beginning of the BytesIO buffer
+
+                        # Calculate the size of the resized image
+                        reduced_size = img_byte_arr.tell() / (1024 * 1024)  # Size in MB
+                        st.write(f"Reduced size of {uploaded_file.name} is {reduced_size:.2f} MB.")
+
+                        # Append the resized image to the list
+                        resized_images.append(img_byte_arr)
+
+                    else:
+                        # If the file is not resized, append the original uploaded file
+                        resized_images.append(uploaded_file)
+
                 except Exception as e:
-                    all_leaderboards_post = pd.DataFrame()
-                    st.warning(f"Failed to Process Image: {str(e)}")
+                    st.warning(f"Error processing file {uploaded_file.name}: {str(e)}")
+                    break
 
-            else:
-                all_leaderboards_post = st.session_state["final_data"] 
+            # Now use the resized_images list for further processing
+            # Pass resized_images to the extract_leaderboard function
+            all_leaderboards = extract_leaderboard(resized_images)
+
+            all_leaderboards_post = post_process(all_leaderboards)
+
+            st.session_state["final_data"] = all_leaderboards_post
 
             if len(all_leaderboards_post) > 0:
                 st.write("Dataframe to be inserted. Please confirm data and people.")
