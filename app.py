@@ -398,7 +398,11 @@ def generate_leaderboard_html(leaderboard_with_settings):
             # Generate a random color for each user
             color = "#{:06x}".format(np.random.randint(0, 0xFFFFFF))
             # Use a colored circle with the first letter of the username
-            first_letter = username[0].upper()
+            if username == "hankthetank14":
+                first_letter = "🎂"
+                username = "hankthetank14 🎉👏🎂"
+            else:
+                first_letter = username[0].upper()
             profile_html = f"<div style='width: 50px; height: 50px; border-radius: 50%; background-color: {color}; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold;'>{first_letter}</div>"
 
         leaderboard_html += f"<div style='display: flex; align-items: center; padding-left: 30px; margin-bottom: 10px;'><div style='margin-right: 10px; font-size: 24px; font-weight: bold;'>{rank}</div><div style='margin-right: 10px;'>{profile_html}</div><div style='padding-left: 10px;'>{username}: {int(total_seconds)} seconds</div></div>"
@@ -446,11 +450,16 @@ def getQuery(query, params=None):
         return pd.DataFrame()  # Return an empty DataFrame on error
 
 
-def apply_penalties(data):
+def apply_penalties(data, year, month, day, quantity, user):
     try:
-        data.loc[data.index==date(2025,1,18), 'rachelrotstein'] = 60
+        data.loc[data.index==date(year,month,day), user] = quantity
     except:
         pass
+    return data
+
+def apply_penalties_batch(data):
+    data = apply_penalties(data, 2025, 1, 18, 60, 'rachelrotstein')
+    data = apply_penalties(data, 2025, 1, 16, -20, 'hankthetank14')
     return data
 
 
@@ -484,7 +493,7 @@ try:
         pivoted_results = pivot_leaderboard(results)
         updated_results = fix_mix_ups_results(mix_ups, pivoted_results)
         fill_missing = give_missing_worst_time(updated_results, num_skips)
-        fill_missing = apply_penalties(fill_missing)
+        fill_missing = apply_penalties_batch(fill_missing)
         
         #get user settings (profile picture)
         user_settings = getQuery("SELECT * FROM user_settings")
@@ -497,6 +506,8 @@ try:
     lb1.markdown("- If the user does not have a result, they are assigned the slowest time")
     lb1.markdown("- The users 3 worst times are dropped")
     lb1.info('Admin Note: A penalty of 60s was applied to `rachelrotstein` on `2025-01-18` for bullying')
+    lb1.info('Admin Note: A penalty of 60s was applied to `hankthetank14` on `2025-01-16` for his BIRTHDAY! 🎉👏🎂')
+
 
 
     lb1.dataframe(fill_missing.sort_values(by="date", ascending=False), use_container_width=True)
