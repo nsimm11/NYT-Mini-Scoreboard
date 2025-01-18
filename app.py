@@ -132,7 +132,12 @@ def extract_leaderboard(uploaded_files):
             # Perform OCR using EasyOCR
             try:
                 reader = easyocr.Reader(['en'], gpu=False)
+                print("check x 2 ")
+                st.write("check x 2")
+
                 results = reader.readtext(image)
+                st.write("check")
+
 
                 # Extract text lines from EasyOCR output
                 text_lines = [result[1] for result in results]
