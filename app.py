@@ -107,7 +107,6 @@ class GracefulSSHTunnel:
             print("Temporary private key file removed.")
 
 def run_ocr(uploaded_file):
-    st.write("processing image...")
         
     # Use a temporary file to save the uploaded image
     with tempfile.NamedTemporaryFile(delete=True) as temp_file:
@@ -145,7 +144,6 @@ def run_ocr(uploaded_file):
 
 def find_crossword_day(chart_data, index):
     if any(day in chart_data[index] for day in ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]):
-        loop = 1
 
         dy = chart_data[index]
         # Remove the day from the string
@@ -171,7 +169,7 @@ def find_crossword_day(chart_data, index):
                 datetime_str = f"{month} {tdate}, {year}"
 
                 return datetime_str
-        return False
+    return False
 
 def extract_leaderboard(uploaded_files):
 
@@ -179,7 +177,8 @@ def extract_leaderboard(uploaded_files):
 
     for uploaded_file in uploaded_files:
 
-        chart_data = run_ocr(uploaded_file)
+        with st.spinner("Processing Image..."):
+            chart_data = run_ocr(uploaded_file)
         if len(chart_data) > 0:
             leaderboard_dict = {}
             
@@ -477,7 +476,7 @@ try:
         st.session_state["cursor"] = cursor
 
         timeout = 60  # Timeout in seconds, if the databsae is connected for 60s, remove connection to avoid overstimulating db
-        num_skips = 3
+        num_skips = 3 #Set number of skips
         #Start homepage functionality and display
 
         #Get results and process them to be displayed
@@ -651,9 +650,8 @@ try:
                     try:
                         all_leaderboards_post = all_leaderboards_post[users]
                         
-                        st.write("uploading...")
-
-                        insert_data(all_leaderboards_post)
+                        with st.spinner("uploading..."):
+                            insert_data(all_leaderboards_post)
 
                         st.session_state["final_data"] = pd.DataFrame()
 
