@@ -12,6 +12,8 @@ import os
 from PIL import Image
 import io
 import base64
+from datetime import date
+
 
 mix_ups = {"ooiwo": ["oiwoo", "ooiwo"], "nsimm22":["nsimm22 "], "rachelrotstein": ["rachrot ", "rachrot"]}
 
@@ -444,39 +446,50 @@ def getQuery(query, params=None):
         st.write(f"Error executing query: {e}")
         return pd.DataFrame()  # Return an empty DataFrame on error
 
+
+def apply_penalties(data):
+    try:
+        data.loc[data.index==date(2025,1,18), 'rachelrotstein'] = 60
+    except:
+        pass
+    return data
+
+
 try:
-    grace = GracefulSSHTunnel(
-        ssh_username=st.secrets["ssh"]["username_ssh"],
-        ssh_password=st.secrets["ssh"].get("private_key_passphrase", None),
-        ssh_private_key=st.secrets["ssh"]["private_key_ssh"],
-        db_name=st.secrets["postgres"]["database_post"],
-        db_host=st.secrets["postgres"]["hostname"],
-        db_port=st.secrets["postgres"]["port"],
-        db_user=st.secrets["postgres"]["username_post"],
-        db_password=st.secrets["postgres"]["password_post"],
-    )
-    
-    #Start database connection
-    grace.start_tunnel()
-    conn = grace.connect_to_db()
-    cursor = grace.conn.cursor()
+    with st.spinner('Loading...'):
+        grace = GracefulSSHTunnel(
+            ssh_username=st.secrets["ssh"]["username_ssh"],
+            ssh_password=st.secrets["ssh"].get("private_key_passphrase", None),
+            ssh_private_key=st.secrets["ssh"]["private_key_ssh"],
+            db_name=st.secrets["postgres"]["database_post"],
+            db_host=st.secrets["postgres"]["hostname"],
+            db_port=st.secrets["postgres"]["port"],
+            db_user=st.secrets["postgres"]["username_post"],
+            db_password=st.secrets["postgres"]["password_post"],
+        )
+        
+        #Start database connection
+        grace.start_tunnel()
+        conn = grace.connect_to_db()
+        cursor = grace.conn.cursor()
 
-    st.session_state["conn"] = conn
-    st.session_state["cursor"] = cursor
+        st.session_state["conn"] = conn
+        st.session_state["cursor"] = cursor
 
-    timeout = 60  # Timeout in seconds, if the databsae is connected for 60s, remove connection to avoid overstimulating db
-    num_skips = 3
-    #Start homepage functionality and display
+        timeout = 60  # Timeout in seconds, if the databsae is connected for 60s, remove connection to avoid overstimulating db
+        num_skips = 3
+        #Start homepage functionality and display
 
-    #Get results and process them to be displayed
-    results = getQuery("SELECT * FROM user_data")
-    pivoted_results = pivot_leaderboard(results)
-    updated_results = fix_mix_ups_results(mix_ups, pivoted_results)
-    fill_missing = give_missing_worst_time(updated_results, num_skips)
-    
-    #get user settings (profile picture)
-    user_settings = getQuery("SELECT * FROM user_settings")
-    
+        #Get results and process them to be displayed
+        results = getQuery("SELECT * FROM user_data")
+        pivoted_results = pivot_leaderboard(results)
+        updated_results = fix_mix_ups_results(mix_ups, pivoted_results)
+        fill_missing = give_missing_worst_time(updated_results, num_skips)
+        fill_missing = apply_penalties(fill_missing)
+        
+        #get user settings (profile picture)
+        user_settings = getQuery("SELECT * FROM user_settings")
+        
     # Display
     lb1, lb2 = st.columns(2, gap="medium", border=True)
 
@@ -484,6 +497,8 @@ try:
     lb1.markdown("#### Day to Day")
     lb1.markdown("- If the user does not have a result, they are assigned the slowest time")
     lb1.markdown("- The users 3 worst times are dropped")
+    lb1.info('Admin Note: A penalty of 60s was applied to `rachelrotstein` on `2025-01-18` for bullying')
+
 
     lb1.dataframe(fill_missing.sort_values(by="date", ascending=False), use_container_width=True)
 
