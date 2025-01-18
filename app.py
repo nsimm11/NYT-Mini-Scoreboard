@@ -506,7 +506,7 @@ try:
     lb1.markdown("- If the user does not have a result, they are assigned the slowest time")
     lb1.markdown("- The users 3 worst times are dropped")
     lb1.info('Admin Note: A penalty of 60s was applied to `rachelrotstein` on `2025-01-18` for bullying')
-    lb1.info('Admin Note: A penalty of 60s was applied to `hankthetank14` on `2025-01-16` for his BIRTHDAY! 🎉👏🎂')
+    lb1.info('Admin Note: A bonus of 20s was applied to `hankthetank14` on `2025-01-16` for his BIRTHDAY! 🎉👏🎂')
 
 
 
