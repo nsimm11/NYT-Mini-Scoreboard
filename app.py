@@ -11,6 +11,7 @@ import plotly.express as px
 import os
 from PIL import Image
 import io
+import base64
 
 mix_ups = {"ooiwo": ["oiwoo", "ooiwo"], "nsimm22":["nsimm22 "], "rachelrotstein": ["rachrot ", "rachrot"]}
 
@@ -103,127 +104,149 @@ class GracefulSSHTunnel:
             os.remove(self.temp_key_path)
             print("Temporary private key file removed.")
 
+def run_ocr(uploaded_file):
+    st.write("processing image...")
+        
+    # Use a temporary file to save the uploaded image
+    with tempfile.NamedTemporaryFile(delete=True) as temp_file:
+        temp_file.write(uploaded_file.getbuffer())
+        temp_file.flush()  # Ensure the file is written
+        
+        # Reset the file pointer to the beginning of the file
+        temp_file.seek(0)
+
+        # Read the image data from the temporary file
+        image_data = np.frombuffer(temp_file.read(), np.uint8)
+        image = cv2.imdecode(image_data, cv2.IMREAD_COLOR)  # Decode the image
+
+        if image is None:
+            st.warning("Failed to decode image. Please check the uploaded file format.")
+            return  # Skip to the next file if decoding fails
+
+        # Perform OCR using EasyOCR
+        try:
+            reader = easyocr.Reader(['en'], gpu=False)
+            results = reader.readtext(image)
+
+            # Extract text lines from EasyOCR output
+            text_lines = [result[1] for result in results]
+
+            # Create a dictionary to hold the leaderboard data
+            chart_data = text_lines
+
+            return chart_data
+
+        except Exception as e:
+            st.warning(f"Error during OCR processing: {str(e)}")
+            return []
+
+
+def find_crossword_day(chart_data, index):
+    if any(day in chart_data[index] for day in ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]):
+        loop = 1
+
+        dy = chart_data[index]
+        # Remove the day from the string
+        for day in ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]:
+            if day in dy:
+                datetime_str_new = dy.replace(day, '').strip()
+        
+                # Extract and remove the month short form
+                month_short_forms = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+                month = next((month for month in month_short_forms if month in datetime_str_new), None)
+                if month:
+                    datetime_str_new = datetime_str_new.replace(month, '').strip()
+                
+                # Extract and remove the year
+                year_start_idx = datetime_str_new.find("202")
+                if year_start_idx != -1:
+                    year = datetime_str_new[year_start_idx:year_start_idx + 4]
+                    datetime_str_new = datetime_str_new.replace(year, '').strip()
+        
+                # The remaining number is the date
+                tdate = ''.join(filter(str.isdigit, datetime_str_new))
+
+                datetime_str = f"{month} {tdate}, {year}"
+
+                return datetime_str
+        return False
 
 def extract_leaderboard(uploaded_files):
 
-    all_leaderboards = pd.DataFrame()  # Initialize an empty DataFrame
+    all_leaderboards = pd.DataFrame()  # Initialize an empty DataFrame for final leaderboard
+
     for uploaded_file in uploaded_files:
-        st.write("processing image...")
-        
-        # Use a temporary file to save the uploaded image
-        with tempfile.NamedTemporaryFile(delete=True) as temp_file:
-            temp_file.write(uploaded_file.getbuffer())
-            temp_file.flush()  # Ensure the file is written
+
+        chart_data = run_ocr(uploaded_file)
+        if len(chart_data) > 0:
+            leaderboard_dict = {}
             
-            # Reset the file pointer to the beginning of the file
-            temp_file.seek(0)
-
-            # Read the image data from the temporary file
-            image_data = np.frombuffer(temp_file.read(), np.uint8)
-            image = cv2.imdecode(image_data, cv2.IMREAD_COLOR)  # Decode the image
-
-            if image is None:
-                st.warning("Failed to decode image. Please check the uploaded file format.")
-                continue  # Skip to the next file if decoding fails
-
-            # Debugging information
-            st.write(f"Image shape: {image.shape}")  # Output the shape of the image
-
-            # Perform OCR using EasyOCR
-            try:
-                reader = easyocr.Reader(['en'], gpu=False)
-                print("check x 2 ")
-                st.write("check x 2")
-
-                results = reader.readtext(image)
-                st.write("check")
-
-
-                # Extract text lines from EasyOCR output
-                text_lines = [result[1] for result in results]
-
-                # Create a dictionary to hold the leaderboard data
-                chart_data = text_lines
-                leaderboard_dict = {}
-            except Exception as e:
-                st.warning(f"Error during OCR processing: {str(e)}")
-
+            #First find the date, then skip to the time / user finder
             loop = 0
 
             for i in range(len(chart_data)):
                 if loop == 0:
-                    if any(day in chart_data[i] for day in ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]):
-                        loop = 1
-
-                        dy = chart_data[i]
-                        # Remove the day from the string
-                        for day in ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]:
-                            if day in dy:
-                                datetime_str_new = dy.replace(day, '').strip()
-                        
-                                # Extract and remove the month short form
-                                month_short_forms = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
-                                month = next((month for month in month_short_forms if month in datetime_str_new), None)
-                                if month:
-                                    datetime_str_new = datetime_str_new.replace(month, '').strip()
-                                
-                                # Extract and remove the year
-                                year_start_idx = datetime_str_new.find("202")
-                                if year_start_idx != -1:
-                                    year = datetime_str_new[year_start_idx:year_start_idx + 4]
-                                    datetime_str_new = datetime_str_new.replace(year, '').strip()
-                        
-                                # The remaining number is the date
-                                tdate = ''.join(filter(str.isdigit, datetime_str_new))
-
-                                datetime_str = f"{month} {tdate}, {year}"
-
-                                break
+                    crossword_day = find_crossword_day(chart_data, i)
+                    if crossword_day == False:
                         continue
-                
+                    else:
+                        #Date found, skip to time:user finder
+                        loop = 1
+                    
+                #time:user finder 
                 else:
+                    #Allows current user to be identified, because only the logged in user on NYT will have (you) in their name
                     if "(you)" in chart_data[i]:
+                        #Remove the (you), so the username is normalized
                         chart_data[i] = chart_data[i].replace('(you)', '')
+                        #set the current user in session state
                         st.session_state["set_user"] = chart_data[i]
                         st.toast("Welcome: " + st.session_state["set_user"])
 
+                    #Settings is always after the table data
                     if "Settings" in chart_data[i]:
                         break
 
+                    #If the len is 6, it is usally a time but has mistaken the : for a :.
                     elif len(chart_data[i]) == 6 and ":" in chart_data[i] and "." in chart_data[i]:
                         chart_data[i] = chart_data[i].replace('.', '')
                         minutes, seconds = chart_data[i].split(':')
                         total_seconds = int(minutes) * 60 + int(seconds)
-                        leaderboard_dict[text_lines[i-1]] = total_seconds
+                        leaderboard_dict[chart_data[i-1]] = total_seconds
 
+                    #If len is 5, it usually in th form 00:00
                     elif len(chart_data[i]) == 5 and ":" in chart_data[i]:
                         minutes, seconds = chart_data[i].split(':')
                         total_seconds = int(minutes) * 60 + int(seconds)
-                        leaderboard_dict[text_lines[i-1]] = total_seconds
+                        leaderboard_dict[chart_data[i-1]] = total_seconds
 
+                    #If len is 5, it usually in th form 00:00 but sometimes the ocr mistakes it for a 00.00
                     elif len(chart_data[i]) == 5 and "." in chart_data[i]:
                         minutes, seconds = chart_data[i].split('.')
                         total_seconds = int(minutes) * 60 + int(seconds)
-                        leaderboard_dict[text_lines[i-1]] = total_seconds
+                        leaderboard_dict[chart_data[i-1]] = total_seconds
 
+                    #if none of those declare failure and print the problem child - could be more ways for the ocr to fuck up
                     else:
-                        print("fail", chart_data[i-1])
+                        print("Failed to process, not a time", chart_data[i])
+                        continue
 
             # Convert to a DataFrame and transpose it
-            leaderboard_df = pd.DataFrame(leaderboard_dict, index=[datetime_str])
+            leaderboard_df = pd.DataFrame(leaderboard_dict, index=[crossword_day])
 
             # Append the current leaderboard to the all_leaderboards DataFrame
             all_leaderboards = pd.concat([all_leaderboards, leaderboard_df])
 
     return all_leaderboards
 
+#OCR sometimes messes up usernames, keep a list of the ones that occur and have them pushed together
 def fix_mix_ups(all_leaderboards_post):
     for key in mix_ups.keys():
         for name in mix_ups[key]:
             if name in all_leaderboards_post.columns and key in all_leaderboards_post.columns:
                 conflict_mask = ~all_leaderboards_post[name].isna() & ~all_leaderboards_post[key].isna()
                 if conflict_mask.any():
-                    raise ValueError("Conflict detected: Both 'oiwoo' and 'ooiwoo' have non-NaN values in the same row.")
+                    raise ValueError(f"Conflict detected: Both problem: '{name}' and normal: '{key}' have non-NaN values in the same row.")
                 all_leaderboards_post[key] = all_leaderboards_post[key].combine_first(all_leaderboards_post[name])
                 all_leaderboards_post.drop(columns=[name], inplace=True)
     return all_leaderboards_post
@@ -275,6 +298,7 @@ def insert_data(all_leaderboards_post):
         st.session_state["conn"].rollback()
         st.error(f"Error inserting data: {str(e)}")
 
+#some
 def fix_mix_ups_results(mix_ups, all_leaderboards_post):
     for key in mix_ups.keys():
         for name in mix_ups[key]:
@@ -289,6 +313,7 @@ def fix_mix_ups_results(mix_ups, all_leaderboards_post):
 
     return all_leaderboards_post
 
+#Pivot from database list style to more natural
 def pivot_leaderboard(df):
     try:
         # Pivot the DataFrame to restructure it
@@ -298,9 +323,12 @@ def pivot_leaderboard(df):
         st.write(f"Error pivoting DataFrame: {e}")
         return pd.DataFrame() 
 
-def give_missing_worst_time(df):
+def give_missing_worst_time(df, num_skips):
     # Fill missing values with the worst time in the row
     df = df.apply(lambda row: row.fillna(row.max()), axis=1)
+    #set the users worst times to 0
+    for column in df.columns:
+        df.loc[df[column].nlargest(num_skips).index, column] = 0  # Set those indices to 0
     return df
 
 def calculate_sum(df):
@@ -328,10 +356,78 @@ st.session_state.last_active = time.time()
 st.markdown("<h1 style='text-align: center; font-weight: bold;'>Palmerston & Friends - NYT Mini Leaderboard</h1>", unsafe_allow_html=True)
 st.markdown("#### Rules")
 st.markdown("- Tour de France Style - Best accumulated time at the end of the month wins!")
-st.markdown("- If you miss a day, you get the worst time!")
+st.markdown("- If you miss a day, you are assigned the groups's worst time, with your 3 worst times getting dropped")
 st.markdown("- Upload your Leaderboard Screenshots below to add times to the leaderboard")
 
+def print_tree(startpath):
+    for root, dirs, files in os.walk(startpath):
+        level = root.replace(startpath, '').count(os.sep)  # Count the depth of the current directory
+        indent = ' ' * 4 * (level)  # Indentation for tree structure
+        print(f"{indent}{os.path.basename(root)}/")  # Print the directory name
+        subindent = ' ' * 4 * (level + 1)  # Indentation for files
+        for f in files:
+            print(f"{subindent}{f}")  # Print the file name
 
+def get_base64_image(image_path):
+    with open(image_path, "rb") as image_file:
+        return base64.b64encode(image_file.read()).decode('utf-8')
+
+def generate_leaderboard_html(leaderboard_with_settings):
+    # Generate HTML for the leaderboard with rankings
+    leaderboard_html = "<div style='flex-direction: column; align-items: left;'>"
+    for rank, row in enumerate(leaderboard_with_settings.iterrows(), start=1):
+        _, row = row
+        username = row['username']
+        total_seconds = row['total_seconds']
+
+        # Construct the path to the user's profile picture
+        user_photo_path = f"user_photos/{username.strip()}/profile_picture.jpg"  # Adjust the extension as needed
+
+        # Check if the profile image exists
+        if os.path.exists(user_photo_path):
+            # Print the path for debugging
+            print(f"Profile image path: {user_photo_path}")
+            
+            # Get the base64 encoded image
+            base64_image = get_base64_image(user_photo_path)
+    
+            # Use the profile image in HTML with cropping
+            profile_html = f"<img src='data:image/jpeg;base64,{base64_image}' style='width: 50px; height: 50px; border-radius: 50%; object-fit: cover;'>"
+        else:
+            # Generate a random color for each user
+            color = "#{:06x}".format(np.random.randint(0, 0xFFFFFF))
+            # Use a colored circle with the first letter of the username
+            first_letter = username[0].upper()
+            profile_html = f"<div style='width: 50px; height: 50px; border-radius: 50%; background-color: {color}; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold;'>{first_letter}</div>"
+
+        leaderboard_html += f"<div style='display: flex; align-items: center; padding-left: 30px; margin-bottom: 10px;'><div style='margin-right: 10px; font-size: 24px; font-weight: bold;'>{rank}</div><div style='margin-right: 10px;'>{profile_html}</div><div style='padding-left: 10px;'>{username}: {int(total_seconds)} seconds</div></div>"
+
+        leaderboard_html += "<div style='display: flex; width: 100%; flex-direction: column; border-top: 1px solid #ccc; align-items: left; padding-top: 5px; padding-bottom: 5px;'></div>"
+    leaderboard_html += "</div>"
+    return leaderboard_html
+
+def create_plot(sum_results):
+    
+    fig = px.scatter(sum_results, x=sum_results.index, y=sum_results.columns, labels={'value': 'Cumulative Seconds [s]'})
+    fig.update_traces(mode='lines+markers')
+    fig.update_layout(xaxis_title='Date', yaxis_title='Cumulative Seconds [s]')
+    fig.update_xaxes(tickformat='%Y-%m-%d')  # Show only the date part on the x-axis
+
+    return  fig
+
+def count_nones(pivoted):
+    # Count None (NaN) values in a specific column
+    skip_dict = {}
+    for col in pivoted.columns:
+        none_count = pivoted[col].isna().sum()
+        skip_dict[col] = [none_count]
+    
+    skip_df = pd.DataFrame.from_dict(skip_dict).T
+    
+    # Rename the final DataFrame column to "Missed Days"
+    skip_df.columns = ["Missed Days"]
+    
+    return skip_df
 
 #General Query funciton, returns a dataframe. Use this instead of pd.read_sql
 def getQuery(query, params=None):
@@ -359,7 +455,8 @@ try:
         db_user=st.secrets["postgres"]["username_post"],
         db_password=st.secrets["postgres"]["password_post"],
     )
-
+    
+    #Start database connection
     grace.start_tunnel()
     conn = grace.connect_to_db()
     cursor = grace.conn.cursor()
@@ -367,33 +464,37 @@ try:
     st.session_state["conn"] = conn
     st.session_state["cursor"] = cursor
 
-    # Example infinite loop to simulate app behavior
-    timeout = 60  # Timeout in seconds
+    timeout = 60  # Timeout in seconds, if the databsae is connected for 60s, remove connection to avoid overstimulating db
+    num_skips = 3
+    #Start homepage functionality and display
 
-
-    results = getQuery("""
-            SELECT * FROM user_data
-             """)
-
-    user_settings = getQuery("""
-            SELECT * FROM user_settings
-             """)
-    
-    # Call the function to pivot the DataFrame
+    #Get results and process them to be displayed
+    results = getQuery("SELECT * FROM user_data")
     pivoted_results = pivot_leaderboard(results)
-
     updated_results = fix_mix_ups_results(mix_ups, pivoted_results)
-
+    fill_missing = give_missing_worst_time(updated_results, num_skips)
+    
+    #get user settings (profile picture)
+    user_settings = getQuery("SELECT * FROM user_settings")
+    
+    # Display
     lb1, lb2 = st.columns(2, gap="medium", border=True)
 
+    #Column 1, Day to Day results
     lb1.markdown("#### Day to Day")
-    lb1.markdown("Note: If the user does not have a result, they are assigned the slowest time")
-    lb1.dataframe(pivoted_results)
+    lb1.markdown("- If the user does not have a result, they are assigned the slowest time")
+    lb1.markdown("- The users 3 worst times are dropped")
 
-    fill_missing = give_missing_worst_time(updated_results)
+    lb1.dataframe(fill_missing.sort_values(by="date", ascending=False), use_container_width=True)
 
+
+    #Column 2, leaderboard
+    
+    #I miss cumtrapz()
     sum_results = calculate_sum(fill_missing)
     sum_results_today = (sum_results.iloc[-1])
+
+
     lb2.markdown("#### Yellow Jersey Leaderboard")
     lb2.write("Todays current standings")
     # Merge sum_results_today with user_settings to get profile images and colors
@@ -404,41 +505,63 @@ try:
     # Sort by total_seconds
     leaderboard_with_settings = leaderboard_with_settings.sort_values(by='total_seconds')
 
-    # Generate HTML for the leaderboard with rankings
-    leaderboard_html = "<div style='flex-direction: column; align-items: left;'>"
-    for rank, row in enumerate(leaderboard_with_settings.iterrows(), start=1):
-        _, row = row
-        username = row['username']
-        total_seconds = row['total_seconds']
-
-        # Construct the path to the user's profile picture
-        user_photo_path = f"user_photos/{username.strip()}/profile_picture.jpg"  # Adjust the extension as needed
-
-        # Check if the profile image exists
-        if os.path.exists(user_photo_path):
-            # Use the profile image
-            profile_html = f"<img src='{user_photo_path}' style='width: 50px; height: 50px; border-radius: 50%;'>"
-        else:
-            # Generate a random color for each user
-            color = "#{:06x}".format(np.random.randint(0, 0xFFFFFF))
-            # Use a colored circle with the first letter of the username
-            first_letter = username[0].upper()
-            profile_html = f"<div style='width: 50px; height: 50px; border-radius: 50%; background-color: {color}; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold;'>{first_letter}</div>"
-
-        leaderboard_html += f"<div style='display: flex; align-items: center; padding-left: 30px; margin-bottom: 10px;'><div style='margin-right: 10px; font-size: 24px; font-weight: bold;'>{rank}</div><div style='margin-right: 10px;'>{profile_html}</div><div style='padding-left: 10px;'>{username}: {total_seconds} seconds</div></div>"
-
-        leaderboard_html += "<div style='display: flex; width: 100%; flex-direction: column; border-top: 1px solid #ccc; align-items: left; padding-top: 5px; padding-bottom: 5px;'></div>"
-    leaderboard_html += "</div>"
-
+    #Generate HMTL for leaderboard
+    leaderboard_html = generate_leaderboard_html(leaderboard_with_settings)
     lb2.markdown(leaderboard_html, unsafe_allow_html=True)
 
+
+    #Create line plot
     st.markdown("#### Accumulated results")
-    fig = px.scatter(sum_results, x=sum_results.index, y=sum_results.columns, labels={'value': 'Cumulative Seconds [s]'})
-    fig.update_traces(mode='lines+markers')
-    fig.update_layout(xaxis_title='Date', yaxis_title='Cumulative Seconds [s]')
-    fig.update_xaxes(tickformat='%Y-%m-%d')  # Show only the date part on the x-axis
+    fig = create_plot(sum_results)
     st.plotly_chart(fig)
 
+    #start fun columns
+
+    st.markdown("### ")
+    fc1, fc2, fc3, fc4 = st.columns(4, gap="small", border=True)
+
+    #3 best times
+    fc1.markdown("#### Fastest Times:")
+    # Ensure the 'date' column is in datetime format
+    results["date"] = pd.to_datetime(results["date"], errors='coerce')
+    # Add day of the week column to results
+    results["Day of the Week"] = results["date"].dt.day_name()
+
+    # Format the 'date' column to show only the date (YYYY-MM-DD)
+    results["date"] = results["date"].dt.strftime('%Y-%m-%d')
+
+    results = results.rename(columns={"total_seconds": "Total Seconds"})
+    results = results[["date", "Day of the Week", "username", "Total Seconds"]]
+
+    fc1.dataframe(results.sort_values(by="Total Seconds").head(), use_container_width=True, hide_index=True)
+
+    #3 worst times
+    fc2.markdown("#### Slowest Times:")
+    # Ensure the 'date' column is in datetime format
+    results["date"] = pd.to_datetime(results["date"], errors='coerce')
+    # Add day of the week column to results
+    results["Day of the Week"] = results["date"].dt.day_name()
+
+    results["date"] = results["date"].dt.strftime('%Y-%m-%d')
+
+    results = results.rename(columns={"total_seconds": "Total Seconds"})
+    results = results[["date", "Day of the Week", "username", "Total Seconds"]]
+
+    # Display the DataFrame without the index
+    fc2.dataframe(results.sort_values(by="Total Seconds", ascending=False).head(), use_container_width=True, hide_index=True)
+
+    none_count_df = count_nones(updated_results)
+
+    #try hards
+    fc3.markdown("#### Biggest Try Hards:")
+    fc3.dataframe(none_count_df.sort_values(by=none_count_df.columns[0]).head(), use_container_width=True)
+
+    #deliquents
+    fc4.markdown("#### Top Delinquents:")
+    fc4.dataframe(none_count_df.sort_values(by=none_count_df.columns[0], ascending=False).head(), use_container_width=True)
+
+
+    #End display, start upload functionality
     with st.expander("Upload Data"):
 
         st.markdown("Upload screenshots of your mini-crossword leaderboard")
@@ -489,13 +612,10 @@ try:
                     st.warning(f"Error processing file {uploaded_file.name}: {str(e)}")
                     break
 
-            # Now use the resized_images list for further processing
             # Pass resized_images to the extract_leaderboard function
-                    # Clear the session state for the file uploader if needed
+            # Clear the session state for the file uploader if needed
             if "uploaded_files" in st.session_state:
                 del st.session_state["uploaded_files"]
-
-            st.write(st.session_state.keys())
 
             all_leaderboards = extract_leaderboard(resized_images)
 
@@ -528,6 +648,7 @@ try:
 
 
     
+    #If user uploads a file with (you), it logs them in
     if st.session_state["set_user"] is not None:
         st.markdown("#### Welcome: " + st.session_state["set_user"])
         st.markdown("Edit your profile below")
@@ -553,8 +674,7 @@ try:
                 st.error("Please upload an image file.")
 
 
-
+# Ensure all resources are cleaned up
 finally:
-    # Ensure all resources are cleaned up
     grace.close_resources()
     st.session_state.grace = None
