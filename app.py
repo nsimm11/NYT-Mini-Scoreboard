@@ -126,17 +126,22 @@ def extract_leaderboard(uploaded_files):
                 st.warning("Failed to decode image. Please check the uploaded file format.")
                 continue  # Skip to the next file if decoding fails
 
+            # Debugging information
+            st.write(f"Image shape: {image.shape}")  # Output the shape of the image
+
             # Perform OCR using EasyOCR
-            reader = easyocr.Reader(['en'], gpu=False)
-            results = reader.readtext(image)
+            try:
+                reader = easyocr.Reader(['en'], gpu=False)
+                results = reader.readtext(image)
 
-            # Extract text lines from EasyOCR output
-            text_lines = [result[1] for result in results]
+                # Extract text lines from EasyOCR output
+                text_lines = [result[1] for result in results]
 
-            # Create a dictionary to hold the leaderboard data
-            chart_data = text_lines
-
-            leaderboard_dict = {}
+                # Create a dictionary to hold the leaderboard data
+                chart_data = text_lines
+                leaderboard_dict = {}
+            except Exception as e:
+                st.warning(f"Error during OCR processing: {str(e)}")
 
             loop = 0
 
@@ -481,6 +486,8 @@ try:
 
             # Now use the resized_images list for further processing
             # Pass resized_images to the extract_leaderboard function
+            del st.session_state["uploaded_files"]
+
             all_leaderboards = extract_leaderboard(resized_images)
 
             all_leaderboards_post = post_process(all_leaderboards)
