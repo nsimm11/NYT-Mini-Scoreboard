@@ -135,6 +135,9 @@ def run_ocr(uploaded_file):
             # Create a dictionary to hold the leaderboard data
             chart_data = text_lines
 
+            if len(text_lines) < 1:
+                st.write("No text detected in the image. Please try again.")
+
             return chart_data
 
         except Exception as e:
@@ -179,7 +182,9 @@ def extract_leaderboard(uploaded_files):
 
         with st.spinner("Processing Image..."):
             chart_data = run_ocr(uploaded_file)
-        if len(chart_data) > 0:
+        if chart_data == None or len(chart_data) == 0:
+            return pd.DataFrame()
+        elif len(chart_data) > 0:
             leaderboard_dict = {}
             
             #First find the date, then skip to the time / user finder
@@ -398,11 +403,7 @@ def generate_leaderboard_html(leaderboard_with_settings):
             # Generate a random color for each user
             color = "#{:06x}".format(np.random.randint(0, 0xFFFFFF))
             # Use a colored circle with the first letter of the username
-            if username == "hankthetank14":
-                first_letter = "🎂"
-                username = "hankthetank14 🎉👏🎂"
-            else:
-                first_letter = username[0].upper()
+            first_letter = username[0].upper()
             profile_html = f"<div style='width: 50px; height: 50px; border-radius: 50%; background-color: {color}; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold;'>{first_letter}</div>"
 
         leaderboard_html += f"<div style='display: flex; align-items: center; padding-left: 30px; margin-bottom: 10px;'><div style='margin-right: 10px; font-size: 24px; font-weight: bold;'>{rank}</div><div style='margin-right: 10px;'>{profile_html}</div><div style='padding-left: 10px;'>{username}: {int(total_seconds)} seconds</div></div>"
@@ -506,7 +507,6 @@ try:
     lb1.markdown("- If the user does not have a result, they are assigned the slowest time")
     lb1.markdown("- The users 3 worst times are dropped")
     lb1.info('Admin Note: A penalty of 60s was applied to `rachelrotstein` on `2025-01-18` for bullying')
-    lb1.info('Admin Note: A bonus of 20s was applied to `hankthetank14` on `2025-01-16` for his BIRTHDAY! 🎉👏🎂')
 
 
 
@@ -614,12 +614,12 @@ try:
                         image = Image.open(uploaded_file)
 
                         # Define the new size (you can adjust this as needed)
-                        new_size = (int(image.width * 0.5), int(image.height * 0.5))  # Resize to 50% of original
+                        new_size = (int(image.width * 0.3), int(image.height * 0.3))  # Resize to 30% of original
                         image = image.resize(new_size, Image.LANCZOS)  # Use LANCZOS for high-quality downsampling
 
-                        # Save the resized image to a bytes buffer
+                        # Save the resized image to a bytes buffer with reduced quality
                         img_byte_arr = io.BytesIO()
-                        image.save(img_byte_arr, format='PNG')  # Save as PNG or any other format
+                        image.save(img_byte_arr, format='JPEG', quality=85)  # Save as JPEG with quality 85
                         img_byte_arr.seek(0)  # Move to the beginning of the BytesIO buffer
 
                         # Calculate the size of the resized image
@@ -632,6 +632,7 @@ try:
                     else:
                         # If the file is not resized, append the original uploaded file
                         resized_images.append(uploaded_file)
+
 
                 except Exception as e:
                     st.warning(f"Error processing file {uploaded_file.name}: {str(e)}")
