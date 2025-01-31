@@ -12,7 +12,7 @@ import os
 from PIL import Image
 import io
 import base64
-from datetime import date
+from datetime import date, datetime
 
 
 mix_ups = {"ooiwo": ["oiwoo", "ooiwo"], "nsimm22":["nsimm22 "], "rachelrotstein": ["rachrot ", "rachrot"]}
@@ -330,12 +330,26 @@ def pivot_leaderboard(df):
         return pd.DataFrame() 
 
 def give_missing_worst_time(df, num_skips):
+    # Create a copy of the DataFrame to avoid modifying the original
+    df_copy = df.copy()
+
     # Fill missing values with the worst time in the row
-    df = df.apply(lambda row: row.fillna(row.max()), axis=1)
-    #set the users worst times to 0
-    for column in df.columns:
-        df.loc[df[column].nlargest(num_skips).index, column] = 0  # Set those indices to 0
-    return df
+    df_copy = df_copy.apply(lambda row: row.fillna(row.max()), axis=1)
+
+    # Check the number of entries for each user
+    for user in df.columns:
+        if user != 'date':  # Skip the 'date' column
+            # Get the user's times
+            user_times = df_copy[user]  # Keep all values, including NaN
+            
+            # Only change the largest times to zero if there are more than 5 entries
+            if len(user_times) > 5:
+                # Identify the largest times, ignoring NaN values
+                largest_times = user_times.nlargest(num_skips).index.tolist()
+                # Set the largest times to zero
+                df_copy.loc[largest_times, user] = 0
+
+    return df_copy
 
 def calculate_sum(df):
     # for each player, update the dataframe so it has the username plus their total time at every day, where the time is the sum of all previous days
@@ -463,6 +477,82 @@ def apply_penalties_batch(data):
     data = apply_penalties(data, 2025, 1, 16, -20, 'hankthetank14')
     return data
 
+def get_current_month(full_results, current_month_str):
+    # Convert the month string to a month number
+    month_number = datetime.strptime(current_month_str, "%B").month
+
+    # Convert index to datetime if it's not already
+    if not pd.api.types.is_datetime64_any_dtype(full_results.index):
+        try:
+            full_results.index = pd.to_datetime(full_results.index, errors='raise')  # Raise an error if conversion fails
+        except Exception as e:
+            st.error(f"Error converting index to datetime: {str(e)}")
+    
+    # Filter results for the current month and year
+    months_results = full_results[full_results.index.month == month_number]
+
+    return months_results
+
+def process_monthly_results(updated_results, num_skips, months):
+    # List of all month names
+    all_months_results = []  # Initialize a list to hold results for all months
+
+    for month in months:
+        # Get results for the current month
+        month_results = get_current_month(updated_results, current_month_str=month)
+        
+        if not month_results.empty:  # Check if there is data for the month
+            # Apply the give_missing_worst_time function
+            results_filled = give_missing_worst_time(month_results, num_skips)
+            # Append the processed results to the all_months_results list
+            all_months_results.append(results_filled)
+
+    # Concatenate all processed results into a single DataFrame
+    return pd.concat(all_months_results, axis=0) if all_months_results else pd.DataFrame()
+
+def format_month_results(month_results):
+    # Create a copy of the original DataFrame to avoid modifying it directly
+    formatted_results = month_results.copy()
+
+    # Ensure the 'date' column is in datetime format and format it to show only the date
+    if 'date' in formatted_results.columns:
+        formatted_results.index = pd.to_datetime(formatted_results.index, errors='coerce')  # Convert to datetime if not already
+        formatted_results.index = formatted_results.index.dt.strftime('%Y-%m-%d')  # Format to YYYY-MM-DD as string
+
+    # Convert all other columns from total seconds to mm:ss format
+    for col in formatted_results.columns:
+        if col != 'date':  # Skip the 'date' column
+            formatted_results[col] = formatted_results[col].apply(
+                lambda x: (
+                    f"{int(x // 60):02}:{int(x % 60):02}" 
+                    if pd.notna(x) and isinstance(x, (int, float)) and x >= 0 
+                    else "00:00"
+                )
+            )
+
+    # Sort the DataFrame by 'date' before applying styles
+    formatted_results = formatted_results.sort_values(by="date", ascending=False)
+
+    # Function to apply styles
+    def highlight_best_worst(s):
+        # Check if there is only one entry
+        if len(s) == 1:
+            return ['background-color: green' for _ in s]  # Style as best time (green)
+
+        best_time = min(s[s != "00:00"])  # Find the best time (excluding zeros)
+        worst_time = max(s[s != "00:00"])  # Find the worst time (excluding zeros)
+        return [
+            'background-color: yellow' if x == "00:00" else
+            'background-color: green' if x == best_time else
+            'background-color: red' if x == worst_time else
+            ''  # No style
+            for x in s
+        ]
+
+    # Apply the styling to all columns except 'date'
+    styled_results = formatted_results.style.apply(highlight_best_worst, subset=formatted_results.columns[0:])  # Exclude 'date' column
+
+    return styled_results
 
 try:
     with st.spinner('Loading...'):
@@ -486,16 +576,24 @@ try:
         st.session_state["cursor"] = cursor
 
         timeout = 60  # Timeout in seconds, if the databsae is connected for 60s, remove connection to avoid overstimulating db
-        num_skips = 3 #Set number of skips
+        num_skips = 3 #Set number of skips per month
         #Start homepage functionality and display
+        # Create a dropdown for selecting the month
+        current_month = date.today().strftime("%B")  # Get the current month name
+        months = [date(2000, i, 1).strftime("%B") for i in range(1, 13)]  # List of all month names
 
         #Get results and process them to be displayed
         results = getQuery("SELECT * FROM user_data")
         pivoted_results = pivot_leaderboard(results)
         updated_results = fix_mix_ups_results(mix_ups, pivoted_results)
-        fill_missing = give_missing_worst_time(updated_results, num_skips)
-        fill_missing = apply_penalties_batch(fill_missing)
-        
+
+        # Call the function to process monthly results
+        final_results = process_monthly_results(updated_results, num_skips, months)
+
+        selected_month = st.selectbox("Select Month", months, index=months.index(current_month))
+
+        results_filled = apply_penalties_batch(final_results)
+
         #get user settings (profile picture)
         user_settings = getQuery("SELECT * FROM user_settings")
         
@@ -503,47 +601,62 @@ try:
     lb1, lb2 = st.columns(2, gap="medium", border=True)
 
     #Column 1, Day to Day results
-    lb1.markdown("#### Day to Day")
+    lb1.markdown(f"#### Day to Day - {selected_month}")
     lb1.markdown("- If the user does not have a result, they are assigned the slowest time")
     lb1.markdown("- The users 3 worst times are dropped")
-    lb1.info('Admin Note: A penalty of 60s was applied to `rachelrotstein` on `2025-01-18` for bullying')
+    #lb1.info('Admin Note: A penalty of 60s was applied to `rachelrotstein` on `2025-01-18` for bullying')
 
-
-
-    lb1.dataframe(fill_missing.sort_values(by="date", ascending=False), use_container_width=True)
-
-
-    #Column 2, leaderboard
-    
-    #I miss cumtrapz()
-    sum_results = calculate_sum(fill_missing)
-    sum_results_today = (sum_results.iloc[-1])
-
-
-    lb2.markdown("#### Yellow Jersey Leaderboard")
+    lb2.markdown(f"#### Yellow Jersey Leaderboard - {selected_month}")
     lb2.write("Todays current standings")
-    # Merge sum_results_today with user_settings to get profile images and colors
-    leaderboard_with_settings = sum_results_today.reset_index().merge(user_settings, left_on='username', right_on='username', how='left')
-    # Rename the current column to 'total_seconds'
-    leaderboard_with_settings.rename(columns={leaderboard_with_settings.columns[1]: 'total_seconds'}, inplace=True)
-
-    # Sort by total_seconds
-    leaderboard_with_settings = leaderboard_with_settings.sort_values(by='total_seconds')
-
-    #Generate HMTL for leaderboard
-    leaderboard_html = generate_leaderboard_html(leaderboard_with_settings)
-    lb2.markdown(leaderboard_html, unsafe_allow_html=True)
-
 
     #Create line plot
     st.markdown("#### Accumulated results")
-    fig = create_plot(sum_results)
-    st.plotly_chart(fig)
-
-    #start fun columns
+    pl1, pl2 = st.columns(2, gap="small", border=True)
 
     st.markdown("### ")
     fc1, fc2, fc3, fc4 = st.columns(4, gap="small", border=True)
+
+    month_results = get_current_month(results_filled, current_month_str=selected_month)
+
+    if len(month_results) > 0:
+        # Format the month results for display
+        formatted_month_results = format_month_results(month_results)
+
+        # Display the formatted DataFrame in Streamlit
+        lb1.dataframe(formatted_month_results, use_container_width=True)
+    
+        #Column 2, leaderboard
+        sum_results = calculate_sum(month_results)
+
+        sum_results_today = (sum_results.iloc[-1])
+
+        # Merge sum_results_today with user_settings to get profile images and colors
+        leaderboard_with_settings = sum_results_today.reset_index().merge(user_settings, left_on='username', right_on='username', how='left')
+        # Rename the current column to 'total_seconds'
+        leaderboard_with_settings.rename(columns={leaderboard_with_settings.columns[1]: 'total_seconds'}, inplace=True)
+
+        # Sort by total_seconds
+        leaderboard_with_settings = leaderboard_with_settings.sort_values(by='total_seconds')
+
+        #Generate HMTL for leaderboard
+        leaderboard_html = generate_leaderboard_html(leaderboard_with_settings)
+        lb2.markdown(leaderboard_html, unsafe_allow_html=True)
+
+        pl1.markdown(f"#### {current_month} Tracker")
+        fig = create_plot(sum_results)
+        pl1.plotly_chart(fig, key="month")
+
+    else: 
+        lb1.warning(f"No Data for {selected_month}")
+        lb2.warning(f"No Data for {selected_month}")
+        pl1.warning(f"No Data for {selected_month}")
+    
+
+    pl2.markdown(f"#### Full Year Tracker")
+    sum_results_full = calculate_sum(results_filled)
+    fig_full = create_plot(sum_results_full)
+    pl2.plotly_chart(fig_full, key="year")
+
 
     #3 best times
     fc1.markdown("#### Fastest Times:")
@@ -642,12 +755,17 @@ try:
             # Clear the session state for the file uploader if needed
             if "uploaded_files" in st.session_state:
                 del st.session_state["uploaded_files"]
+            
+            if len(st.session_state["final_data"]) == 0:
 
-            all_leaderboards = extract_leaderboard(resized_images)
+                all_leaderboards = extract_leaderboard(resized_images)
 
-            all_leaderboards_post = post_process(all_leaderboards)
+                all_leaderboards_post = post_process(all_leaderboards)
 
-            st.session_state["final_data"] = all_leaderboards_post
+                st.session_state["final_data"] = all_leaderboards_post
+            
+            else:
+                all_leaderboards_post = st.session_state["final_data"]
 
             if len(all_leaderboards_post) > 0:
                 st.write("Dataframe to be inserted. Please confirm data and people.")
