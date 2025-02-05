@@ -15,7 +15,7 @@ import base64
 from datetime import date, datetime
 
 
-mix_ups = {"ooiwo": ["oiwoo", "ooiwo"], "nsimm22":["nsimm22 "], "rachelrotstein": ["rachrot ", "rachrot"]}
+mix_ups = {"ooiwo": ["oiwoo", "ooiwo"], "nsimm22":["nsimm22 "], "rachelrotstein": ["rachrot ", "rachrot"],"drew": ["drew "]}
 
 if "set_user" not in st.session_state:
     st.session_state["set_user"] = None
